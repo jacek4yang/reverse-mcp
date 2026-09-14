@@ -4,6 +4,8 @@
 #include "kernwin.hpp"
 #include "pro.h"
 
+#include "hexrays_extras.h"
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -154,7 +156,12 @@ int idalib_open_database_quiet(int argc, const char *const *argv,
     return result;
   }
 
-  (*callui)(ui_notification_t::ui_ready_to_run);
+  // ui_ready_to_run via the runtime-resolved dispatcher (see
+  // hexrays_extras.h; callui cannot be a static import because data
+  // imports are incompatible with delay-loading ida.dll).
+  if (auto fp = idalib_callui_resolver()) {
+    fp(ui_notification_t::ui_ready_to_run);
+  }
 
   if (auto_analysis) {
     result = !auto_wait();

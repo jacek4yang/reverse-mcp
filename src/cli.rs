@@ -210,29 +210,16 @@ async fn mock_chain() -> Result<(), String> {
 }
 
 async fn real_chain(ida_dir: &std::path::Path) -> Result<(), String> {
-    // Real backend requires the idalib-enabled worker; if the next-to-exe
-    // worker is mock-only this fails with a clear error from backend.select.
-    let exe_dir = rmcp_core::layout::exe_dir();
-    let name = if cfg!(windows) {
-        "reverse-mcp-worker.exe"
-    } else {
-        "reverse-mcp-worker"
-    };
-    let worker = exe_dir.join(name);
-    if !worker.is_file() {
-        return Err(format!("worker binary missing: {}", worker.display()));
-    }
-
-    // Drive a fresh worker process directly (not via pool, which would pick
-    // the same binary anyway, but we want the IDA dir on PATH).
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/simple.c");
-    let _ = fixture; // fixture is only used by the integration test; here we
-    // just verify the real backend initializes.
+    // Real backend requires this build to ship the idalib feature; if it
+    // doesn't, backend.select fails with a clear error below.
+    // Drive a fresh worker process (this same exe in worker mode).
 
     use std::io::{BufRead, BufReader, Write};
     use std::process::{Command, Stdio};
 
+    let worker = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(&worker);
+    cmd.args(["worker"]);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
     let path = std::env::var("PATH").unwrap_or_default();
     cmd.env("PATH", format!("{};{}", ida_dir.display(), path));

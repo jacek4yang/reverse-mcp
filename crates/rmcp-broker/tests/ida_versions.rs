@@ -66,25 +66,10 @@ fn version_selection_flow() {
 #[tokio::test]
 #[ignore] // run explicitly: cargo test -p rmcp-broker --features idalib -- --ignored
 async fn broker_open_with_version_params() {
-    // Broker-level: spawn_for with an empty version auto-selects and the
-    // session comes up healthy.
-    let worker_dir = rmcp_core::layout::exe_dir();
-    let name = if cfg!(windows) {
-        "reverse-mcp-worker.exe"
-    } else {
-        "reverse-mcp-worker"
-    };
-    let candidates = [
-        worker_dir.join(name),
-        worker_dir
-            .parent()
-            .map(|p| p.join(name))
-            .unwrap_or(worker_dir.join(name)),
-    ];
-    // Prefer an idalib-enabled worker when present; build the plain one
-    // otherwise (the "auto" backend path tolerates mock-only workers).
-    let _ = candidates;
-
+    // Single-exe architecture: the pool spawns this exe in `worker` mode; no
+    // worker binary to locate. The "auto" backend path tolerates mock-only
+    // builds, so both outcomes are valid — the assertion is that resolution +
+    // spawn + handshake all succeed.
     let mut pool = rmcp_broker::WorkerPool::new();
 
     // empty version = auto-select; "auto" falls back to mock when the

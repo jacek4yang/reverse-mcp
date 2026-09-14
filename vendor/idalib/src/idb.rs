@@ -11,7 +11,7 @@ use crate::ffi::entry::{get_entry, get_entry_ordinal, get_entry_qty};
 use crate::ffi::func::{
     get_func, get_func_qty, getn_func, idalib_get_func_cmt, idalib_set_func_cmt,
 };
-use crate::ffi::hexrays::{decompile_func, init_hexrays_plugin, term_hexrays_plugin};
+use crate::ffi::hexrays::{decompile_func, idalib_hexrays_init, idalib_hexrays_term};
 use crate::ffi::ida::{
     auto_wait, close_database_with, make_signatures, open_database_quiet, set_screen_ea,
 };
@@ -133,7 +133,7 @@ impl IDB {
 
         open_database_quiet(path, auto_analyse, args)?;
 
-        let decompiler = unsafe { init_hexrays_plugin(0.into()) };
+        let decompiler = unsafe { idalib_hexrays_init(autocxx::c_int(0)) };
 
         Ok(Self {
             path: path.to_owned(),
@@ -585,7 +585,7 @@ impl Drop for IDB {
     fn drop(&mut self) {
         if self.decompiler {
             unsafe {
-                term_hexrays_plugin();
+                idalib_hexrays_term();
             }
         }
         close_database_with(self.save);

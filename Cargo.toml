@@ -1,4 +1,4 @@
-﻿[workspace]
+[workspace]
 resolver = "3"
 members = [
     ".",
@@ -36,13 +36,26 @@ toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[features]
+default = []
+# Real IDA backend via vendored idalib (build-time SDK linkage). The IDA DLLs
+# are delay-loaded so the exe starts without IDA on PATH (see build.rs).
+idalib = ["rmcp-worker/idalib", "dep:idalib", "dep:idalib-build"]
+
+[build-dependencies]
+idalib-build = { path = "vendor/idalib-build", optional = true }
+
 [dependencies]
 rmcp-broker = { version = "0.1.0", path = "crates/rmcp-broker" }
 rmcp-core = { path = "crates/rmcp-core" }
+rmcp-worker = { path = "crates/rmcp-worker" }
 serde_json = "1"
 tokio = { version = "1.53.1", features = ["full"] }
+
+[dependencies.idalib]
+path = "vendor/idalib"
+optional = true
 
 [profile.release]
 lto = "thin"
 strip = true
-

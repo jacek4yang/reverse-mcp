@@ -6,17 +6,35 @@
 
 #include "cxx.h"
 
+// processor_t::get_proc_index() expands the SDK's INTERR macro, which
+// references the `under_debugger` data export of ida.dll — a data import
+// that is incompatible with delay-loading ida.dll. Use our own lookup
+// without the INTERR path (0 is a safe fallback, same as psnames[0]).
+inline int idalib_proc_index(const processor_t *ph) {
+  qstring curproc = inf_get_procname();
+  for (size_t i = 0; ph->psnames[i] != nullptr; ++i) {
+    const char *p = ph->psnames[i];
+    if (p[0] == '-') { // obsolete processor names start with a '-'
+      ++p;
+    }
+    if (curproc == p) {
+      return static_cast<int>(i);
+    }
+  }
+  return 0;
+}
+
 std::int32_t idalib_ph_id(const processor_t *ph) {
   return ph->id;
 }
 
 rust::String idalib_ph_short_name(const processor_t *ph) {
-  auto name = ph->psnames[const_cast<processor_t *>(ph)->get_proc_index()];
+  auto name = ph->psnames[idalib_proc_index(ph)];
   return rust::String(name);
 }
 
 rust::String idalib_ph_long_name(const processor_t *ph) {
-  auto name = ph->plnames[const_cast<processor_t *>(ph)->get_proc_index()];
+  auto name = ph->plnames[idalib_proc_index(ph)];
   return rust::String(name);
 }
 

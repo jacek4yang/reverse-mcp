@@ -9,8 +9,7 @@ use rmcp::transport::async_rw::AsyncRwTransport;
 
 #[tokio::test]
 async fn e2e_stdio_mock_wired() {
-    // The worker child process must exist; build it on demand for test runs.
-    ensure_worker_built().await;
+    // Single-exe architecture: no separate worker binary to build.
     // Pair 1: server-read <- client-write
     let (server_read, client_write) = duplex(64 * 1024);
     // Pair 2: client-read <- server-write
@@ -167,28 +166,4 @@ fn first_text(resp: &rmcp::model::CallToolResult) -> String {
             _ => None,
         })
         .unwrap_or_default()
-}
-
-/// Ensure the worker binary exists near this test binary (target/debug).
-/// cargo does not build other bins for integration tests, so do it once.
-async fn ensure_worker_built() {
-    let exe_dir = rmcp_core::layout::exe_dir();
-    let name = if cfg!(windows) {
-        "reverse-mcp-worker.exe"
-    } else {
-        "reverse-mcp-worker"
-    };
-    let mut candidates = vec![exe_dir.join(name)];
-    if let Some(parent) = exe_dir.parent() {
-        candidates.push(parent.join(name));
-    }
-    if candidates.iter().any(|p| p.is_file()) {
-        return;
-    }
-    let status = tokio::process::Command::new("cargo")
-        .args(["build", "-p", "rmcp-worker"])
-        .status()
-        .await
-        .expect("run cargo build -p rmcp-worker");
-    assert!(status.success(), "failed to build rmcp-worker for e2e test");
 }

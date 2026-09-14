@@ -1,6 +1,6 @@
-//! Worker process pool: spawn `reverse-mcp-worker` children, perform the
-//! hello handshake, route one request at a time per session, detect crashes,
-//! respawn, and enforce `max_workers`.
+//! Worker process pool: spawn this same executable in `worker` mode (single-
+//! exe architecture), perform the hello handshake, route one request at a
+//! time per session, detect crashes, respawn, and enforce `max_workers`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -71,7 +71,6 @@ pub struct WorkerPool {
     /// Cached idalib-feature detection for the worker binary.
     idalib_feature: Option<bool>,
 }
-
 impl WorkerPool {
     pub fn new() -> Self {
         Self {
@@ -83,34 +82,43 @@ impl WorkerPool {
         }
     }
 
-    /// Locate the worker binary next to this exe (portable layout). Also
-    /// checks the parent dir so `target/debug/deps` test binaries find
-    /// `target/debug/reverse-mcp-worker.exe`.
+    /// Locate the worker binary: the single-exe architecture runs the worker
+    /// as this same executable (`<exe> worker`). When running inside a test
+    /// binary, `current_exe` is the test itself, so fall back to a
+    /// `reverse-mcp(.exe)` sibling in the same or parent directory.
     pub fn ensure_worker_exe(&mut self) -> Result<PathBuf> {
         if let Some(p) = &self.worker_exe {
             return Ok(p.clone());
         }
         let exe_dir = rmcp_core::layout::exe_dir();
-        let name = if cfg!(windows) {
-            "reverse-mcp-worker.exe"
-        } else {
-            "reverse-mcp-worker"
-        };
-        let mut candidates = vec![exe_dir.join(name)];
-        if let Some(parent) = exe_dir.parent() {
-            candidates.push(parent.join(name));
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Ok(cur) = std::env::current_exe() {
+            candidates.push(cur);
         }
-        for p in candidates {
-            if p.is_file() {
-                self.worker_exe = Some(p.clone());
-                return Ok(p);
+        let sibling = if cfg!(windows) {
+            "reverse-mcp.exe"
+        } else {
+            "reverse-mcp"
+        };
+        candidates.push(exe_dir.join(sibling));
+        if let Some(parent) = exe_dir.parent() {
+            candidates.push(parent.join(sibling));
+        }
+        for c in candidates {
+            // A valid worker exe answers the mock probe with exit 0.
+            let probed = std::process::Command::new(&c)
+                .args(["worker", "--probe-backend", "mock"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output();
+            if probed.is_ok_and(|out| out.status.success()) {
+                self.worker_exe = Some(c.clone());
+                return Ok(c);
             }
         }
-        self.worker_exe_error = Some(format!(
-            "worker binary not found near {}",
-            exe_dir.display()
-        ));
-        Err(Error::Worker(self.worker_exe_error.clone().unwrap()))
+        let msg = "no worker-capable exe found (expected reverse-mcp with `worker` subcommand)";
+        self.worker_exe_error = Some(msg.to_string());
+        Err(Error::Worker(msg.to_string()))
     }
 
     pub fn set_ida_dir(&mut self, dir: PathBuf) {
@@ -190,13 +198,22 @@ impl WorkerPool {
         };
         let plugins_dir = rmcp_core::layout::plugins_dir();
 
+        // Single-exe architecture: the worker is this same binary invoked
+        // with the internal `worker` subcommand.
         let mut cmd = Command::new(&worker_exe);
+        cmd.arg("worker");
         if let Some(dir) = &ida_dir {
             cmd.env("REVERSE_MCP_IDA_DIR", dir);
             // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
             // the loader resolves them without a system-wide PATH entry.
             let path = std::env::var("PATH").unwrap_or_default();
             cmd.env("PATH", format!("{};{}", dir.display(), path));
+            // IDA's embedded Python needs a home or its init fails and the
+            // worker dies; point it at the interpreter bundled with IDA.
+            let pyhome = dir.join("Python311");
+            if pyhome.is_dir() {
+                cmd.env("PYTHONHOME", &pyhome);
+            }
         }
         // Portable plugins: IDAUSR points at the exe-relative plugins dir so
         // plugins come only from reverse-mcp's layout, never the IDA install
@@ -255,9 +272,9 @@ impl WorkerPool {
         Ok(handle)
     }
 
-    /// Does the located worker binary support the idalib backend? Probed
-    /// once by running `reverse-mcp-worker --probe-backend idalib` (the
-    /// worker prints `idalib` and exits). Falls back to false.
+    /// Does this exe support the idalib backend? Probed once by running
+    /// `<exe> worker --probe-backend idalib` (the worker prints `idalib` and
+    /// exits 0). Falls back to false.
     fn worker_has_idalib_feature(&mut self) -> bool {
         if let Some(flag) = self.idalib_feature {
             return flag;
@@ -267,8 +284,7 @@ impl WorkerPool {
             .as_ref()
             .and_then(|exe| {
                 let out = std::process::Command::new(exe)
-                    .arg("--probe-backend")
-                    .arg("idalib")
+                    .args(["worker", "--probe-backend", "idalib"])
                     .output()
                     .ok()?;
                 let s = String::from_utf8_lossy(&out.stdout);
