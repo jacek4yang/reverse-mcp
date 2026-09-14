@@ -30,14 +30,17 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      # NOTE: the repo vendors idalib/idalib-sys (optional, feature-gated);
+      # their build scripts require the proprietary IDA SDK headers which are
+      # NOT in the repo. Target our crates explicitly instead of --workspace.
       - name: Format check
         run: cargo fmt --all -- --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker --all-targets -- -D warnings
 
       - name: Tests (mock backend, no IDA required)
-        run: cargo test --workspace
+        run: cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
 
-      - name: Build release binaries
+      - name: Build release binaries (mock)
         run: cargo build --release -p reverse-mcp -p rmcp-worker
