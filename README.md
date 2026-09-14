@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/jacek4yang/reverse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jacek4yang/reverse-mcp/actions/workflows/ci.yml)
 
-MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** — one `reverse-mcp.exe` broker + self-spawned workers driving IDA through its native idalib API (no `idat`, no Python).
+MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** — a single `reverse-mcp.exe` (broker + self-spawned workers in the same binary) driving IDA through its native idalib API (no `idat`, no Python).
 
 ## What it does
 
@@ -34,7 +34,7 @@ Large outputs spill to a result store; truncation is always flagged, never silen
 
 ```
 agent ←→ broker (reverse-mcp.exe, MCP stdio/HTTP)
-              └→ spawns reverse-mcp-worker.exe per open DB
+              └→ spawns itself in `worker` mode per open DB
                     └→ idalib (IDA 9.2 native FFI, one IDB per process)
 ```
 
@@ -63,7 +63,7 @@ Every candidate is validated (runtime libs present, version read from the PE ver
 ## Quick start
 
 ```powershell
-cargo build --release -p reverse-mcp -p rmcp-worker --features rmcp-worker/idalib
+cargo build --release -p reverse-mcp --features idalib
 
 # sanity check: discovery + worker + real IDA chain
 .\target\release\reverse-mcp.exe selftest

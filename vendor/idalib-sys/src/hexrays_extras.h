@@ -8,7 +8,51 @@
 #include <memory>
 #include <sstream>
 
+#ifdef __NT__
+#include <windows.h>
+#endif
+
 #include "cxx.h"
+
+// The SDK's init_hexrays_plugin/term_hexrays_plugin inline functions go
+// through the `callui` data export of ida.dll. Data imports cannot be
+// delay-loaded (LNK1194), so resolve callui at runtime instead and keep
+// ida.dll delay-loadable for the combined broker/worker exe.
+typedef callui_t(idaapi *idalib_callui_fn_t)(ui_notification_t what, ...);
+
+inline HMODULE idalib_ida_module() {
+  HMODULE ida = GetModuleHandleW(L"ida.dll");
+  if (!ida) {
+    ida = LoadLibraryW(L"ida.dll");
+  }
+  return ida;
+}
+
+inline idalib_callui_fn_t idalib_callui_resolver() {
+  // callui is a data export: GetProcAddress returns the address OF the
+  // pointer variable, so dereference it to get the dispatcher function.
+  static idalib_callui_fn_t fp = nullptr;
+  if (!fp) {
+    HMODULE ida = idalib_ida_module();
+    FARPROC p = ida ? GetProcAddress(ida, "callui") : nullptr;
+    if (p) {
+      fp = *reinterpret_cast<idalib_callui_fn_t *>(p);
+    }
+  }
+  return fp;
+}
+
+inline bool idalib_hexrays_init(int flags) {
+  idalib_callui_fn_t fp = idalib_callui_resolver();
+  if (!fp) {
+    return false;
+  }
+  hexdsp_t *dummy = nullptr;
+  return fp(ui_broadcast, HEXRAYS_API_MAGIC, &dummy, flags).i ==
+         (HEXRAYS_API_MAGIC >> 32);
+}
+
+inline void idalib_hexrays_term() {}
 
 #ifndef CXXBRIDGE1_STRUCT_hexrays_error_t
 #define CXXBRIDGE1_STRUCT_hexrays_error_t

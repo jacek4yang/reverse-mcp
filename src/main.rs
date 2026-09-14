@@ -1,17 +1,40 @@
 //! reverse-mcp — one binary: broker (MCP server) + self-spawned workers.
 //!
-//! Subcommands: serve | worker | doctor | open | sessions | inspect |
-//! decompile | selftest | version.
-
-use std::path::PathBuf;
+//! Subcommands: serve | worker (internal) | doctor | open | sessions |
+//! inspect | decompile | selftest | ida list | version.
+//!
+//! The broker spawns itself via `std::env::current_exe()` with the internal
+//! `worker` subcommand, so the distributed artifact is a single exe.
+//!
+//! Windows note: with the `idalib` feature this binary links ida.dll /
+//! idalib.dll. Those imports are delay-loaded (build.rs) so the broker and
+//! mock-worker modes start without IDA on PATH; the real backend only needs
+//! it once idalib is actually initialized.
 
 mod cli;
+
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("serve") => cmd_serve(args.get(1).map(String::as_str)).await,
+        // Internal subcommand: the broker spawns `<exe> worker` per open DB.
+        Some("worker") => {
+            // Hidden helper: `--probe-backend <kind>` prints the kind and
+            // exits 0 if this build supports it, used by the broker to detect
+            // the real idalib backend without spawning a session.
+            if args.get(1).map(String::as_str) == Some("--probe-backend") {
+                let kind = args.get(2).map(String::as_str).unwrap_or("");
+                if rmcp_worker::probe_backend(kind) {
+                    println!("{kind}");
+                    std::process::exit(0);
+                }
+                std::process::exit(1);
+            }
+            rmcp_worker::worker_main()
+        }
         Some("doctor") => cmd_doctor(args.get(1).map(String::as_str)),
         Some("open") => cli::cmd_open(args.get(1).map(String::as_str).unwrap_or("")).await,
         Some("sessions") => cli::cmd_sessions().await,
@@ -124,17 +147,19 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
         plugins.display()
     );
 
-    // Worker binary
-    let worker = exe_dir.join(if cfg!(windows) {
-        "reverse-mcp-worker.exe"
-    } else {
-        "reverse-mcp-worker"
-    });
-    if worker.is_file() {
-        println!("worker binary: {} OK", worker.display());
-    } else {
-        println!("worker binary: {} MISSING", worker.display());
-        ok = false;
+    // Single-exe worker: this binary serves as its own worker (`worker`
+    // subcommand); no separate reverse-mcp-worker.exe is needed.
+    let worker_probe = std::process::Command::new(std::env::current_exe().unwrap_or_default())
+        .args(["worker", "--probe-backend", "mock"])
+        .output();
+    match worker_probe {
+        Ok(out) if out.status.success() => {
+            println!("worker mode: OK (single exe, `worker` subcommand)");
+        }
+        _ => {
+            println!("worker mode: BROKEN (`<exe> worker --probe-backend mock` failed)");
+            ok = false;
+        }
     }
 
     // IDA discovery (multi-version)

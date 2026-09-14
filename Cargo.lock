@@ -1167,8 +1167,11 @@ dependencies = [
 name = "reverse-mcp"
 version = "0.1.0"
 dependencies = [
+ "idalib",
+ "idalib-build",
  "rmcp-broker",
  "rmcp-core",
+ "rmcp-worker",
  "serde_json",
  "tokio",
 ]
@@ -1272,6 +1275,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

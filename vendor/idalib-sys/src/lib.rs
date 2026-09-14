@@ -165,11 +165,9 @@ include_cpp! {
     generate!("FC_NOPREDS")
     generate!("FC_OUTLINES")
 
-    // hexrays
-    generate!("init_hexrays_plugin")
-    generate!("term_hexrays_plugin")
-
-    // generate!("decompile_func")
+    // hexrays — init/term are hand-written shims in hexrays_extras.h; the
+    // SDK inline functions expand to the `callui` data import of ida.dll,
+    // which is incompatible with delay-loading.
     generate!("cfuncptr_t")
     generate!("hexrays_failure_t")
 
@@ -528,13 +526,11 @@ pub mod hexrays {
         cblock_t, cexpr_t, cfunc_t, cinsn_t, citem_t, cswitch_t, cthrow_t, ctry_t,
     };
 
-    pub use super::ffi::{
-        carg_t, carglist_t, cfuncptr_t, init_hexrays_plugin, term_hexrays_plugin,
-    };
+    pub use super::ffi::{carg_t, carglist_t, cfuncptr_t};
     pub use super::ffix::{
         cblock_iter, idalib_hexrays_cblock_iter, idalib_hexrays_cblock_iter_next,
         idalib_hexrays_cblock_len, idalib_hexrays_cfunc_pseudocode, idalib_hexrays_cfuncptr_inner,
-        idalib_hexrays_decompile_func,
+        idalib_hexrays_decompile_func, idalib_hexrays_init, idalib_hexrays_term,
     };
 
     pub unsafe fn decompile_func(
@@ -752,6 +748,9 @@ pub mod ffix {
             f: *const qrefcnt_t_cfunc_t_AutocxxConcrete,
         ) -> *mut cfunc_t;
         unsafe fn idalib_hexrays_cfunc_pseudocode(f: *mut cfunc_t) -> String;
+
+        unsafe fn idalib_hexrays_init(flags: c_int) -> bool;
+        unsafe fn idalib_hexrays_term();
 
         unsafe fn idalib_hexrays_decompile_func(
             f: *mut func_t,
