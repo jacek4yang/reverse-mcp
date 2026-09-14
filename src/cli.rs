@@ -30,10 +30,6 @@ fn set_pool_config(c: Config) {
     POOL_CONFIG.with(|p| *p.borrow_mut() = Some(c));
 }
 
-fn take_pool_config() -> Config {
-    POOL_CONFIG.with(|p| p.borrow_mut().take().unwrap_or_default())
-}
-
 fn new_pool() -> rmcp_broker::WorkerPool {
     let _ = load_config_or_exit();
     rmcp_broker::WorkerPool::new()
@@ -51,7 +47,7 @@ pub async fn cmd_open(path: &str) -> i32 {
         return 1;
     }
     let mut pool = new_pool();
-    match pool.spawn_for(path, 8, "idalib").await {
+    match pool.spawn_for(path, 8, "auto", "").await {
         Ok(handle) => {
             println!("{handle}");
             0
@@ -78,7 +74,7 @@ pub async fn cmd_inspect(db: Option<&str>, ea: Option<&str>) -> i32 {
         eprintln!("usage: reverse-mcp inspect <db-handle> [ea]");
         return 2;
     };
-    let mut pool = new_pool();
+    let pool = new_pool();
     let Some(session) = pool.session(db).await else {
         eprintln!("unknown or closed db handle '{db}' (sessions do not survive process restarts)");
         return 1;
@@ -123,7 +119,7 @@ pub async fn cmd_decompile(db: Option<&str>, ea: Option<&str>) -> i32 {
         eprintln!("bad ea '{ea}'");
         return 2;
     };
-    let mut pool = new_pool();
+    let pool = new_pool();
     let Some(session) = pool.session(db).await else {
         eprintln!("unknown or closed db handle '{db}'");
         return 1;
@@ -194,7 +190,7 @@ pub async fn cmd_selftest() -> i32 {
 async fn mock_chain() -> Result<(), String> {
     let mut pool = new_pool();
     let handle = pool
-        .spawn_for("selftest-mock", 8, "mock")
+        .spawn_for("selftest-mock", 8, "mock", "")
         .await
         .map_err(|e| e.to_string())?;
     let session = pool.session(&handle).await.ok_or("session gone")?;
@@ -262,6 +258,42 @@ async fn real_chain(ida_dir: &std::path::Path) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// `reverse-mcp ida list` — every discovered install: source, version,
+/// runtime, decompilers, backend status.
+pub fn cmd_ida_list(explicit: Option<&str>) -> i32 {
+    let explicit = explicit.map(PathBuf::from);
+    let installs = rmcp_core::discovery::discover_all(explicit.as_deref());
+    if installs.is_empty() {
+        println!("no IDA installations found");
+        return 1;
+    }
+    println!(
+        "{:<6}  {:<10}  {:<12}  {:<24}  {:<12}  {}",
+        "VER", "RUNTIME", "SOURCE", "DECOMPILERS", "BACKEND", "ROOT"
+    );
+    for inst in &installs {
+        let backend = match inst.backend {
+            rmcp_core::discovery::BackendStatus::Ready => "ready",
+            rmcp_core::discovery::BackendStatus::Unavailable => "unavailable",
+        };
+        let decos = if inst.decompilers.is_empty() {
+            "-"
+        } else {
+            &inst.decompilers.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(",")
+        };
+        println!(
+            "{:<6}  {:<10}  {:<12}  {:<24}  {:<12}  {}",
+            inst.version.to_string(),
+            format!("{}-bit", if inst.arch == rmcp_core::discovery::Arch::X64 { 64 } else { 32 }),
+            inst.source.as_str(),
+            decos,
+            backend,
+            inst.root.display()
+        );
+    }
+    0
 }
 
 fn parse_ea(s: &str) -> std::result::Result<u64, String> {

@@ -14,3 +14,14 @@ thiserror.workspace = true
 tokio = { version = "1.53.1", features = ["full"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+rmcp-broker = { path = ".", version = "0.1.0" }
+
+[features]
+default = []
+idalib = ["rmcp-ida/idalib", "dep:rmcp-ida"]
+
+[dependencies.rmcp-ida]
+path = "../rmcp-ida"
+optional = true

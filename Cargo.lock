@@ -1211,7 +1211,9 @@ name = "rmcp-broker"
 version = "0.1.0"
 dependencies = [
  "rmcp",
+ "rmcp-broker",
  "rmcp-core",
+ "rmcp-ida",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

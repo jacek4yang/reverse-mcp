@@ -68,6 +68,8 @@ pub struct WorkerPool {
     /// Result of trying to locate the worker binary at startup.
     pub worker_exe_error: Option<String>,
     ida_dir: Option<PathBuf>,
+    /// Cached idalib-feature detection for the worker binary.
+    idalib_feature: Option<bool>,
 }
 
 impl WorkerPool {
@@ -77,6 +79,7 @@ impl WorkerPool {
             worker_exe: None,
             worker_exe_error: None,
             ida_dir: None,
+            idalib_feature: None,
         }
     }
 
@@ -131,12 +134,15 @@ impl WorkerPool {
     }
 
     /// Spawn a worker for `db_path`, handshake, select backend, open the DB.
+    /// `ida_version` may be empty (auto-select), "9.2", "latest" or a range
+    /// like ">=9.2,<9.4" — parsed by `IdaRequirement`.
     /// Returns the new db handle.
     pub async fn spawn_for(
         &mut self,
         db_path: &str,
         max_workers: usize,
         backend_kind: &str,
+        ida_version: &str,
     ) -> Result<String> {
         if self.sessions.len() >= max_workers {
             return Err(Error::Worker(format!(
@@ -145,28 +151,46 @@ impl WorkerPool {
             )));
         }
         let worker_exe = self.ensure_worker_exe()?;
-        let ida_dir = self.ida_dir.clone();
-        // Resolve the IDA install lazily (discovery may hit the drive scan).
-        let ida_dir = match ida_dir {
-            Some(d) => Some(d),
-            None => match rmcp_core::discovery::discover(None) {
-                Ok(install) => {
-                    self.ida_dir = Some(install.dir.clone());
-                    self.ida_dir.clone()
-                }
-                Err(_) => None,
-            },
+        // Resolve the IDA install (multi-version aware; discovery may hit
+        // the drive scan). An explicitly configured dir wins.
+        let requirement = rmcp_core::discovery::IdaRequirement::parse(ida_version)?;
+        let explicit = self.ida_dir.clone();
+        let install = if let Some(d) = explicit.as_deref() {
+            rmcp_core::discovery::resolve_with(Some(d), &requirement)?
+        } else {
+            rmcp_core::discovery::resolve(&requirement)?
+        };
+        let ida_dir = install.root.clone();
+        // The worker must run a backend matching this install version.
+        let backend_kind = if backend_kind == "idalib" && !install.backend_ready() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "idalib".into(),
+                reason: format!(
+                    "IDA {} is installed but no verified backend ships for it (only 9.2); pick another version or upgrade reverse-mcp",
+                    install.version
+                ),
+            });
+        } else if backend_kind == "auto" {
+            // auto = real backend when (a) this install is backend-ready and
+            // (b) the worker binary actually ships the idalib feature; mock
+            // otherwise. The idalib capability probe runs at worker side, so
+            // auto tolerates a mock-only worker.
+            if install.backend_ready() && self.worker_has_idalib_feature() {
+                "idalib"
+            } else {
+                "mock"
+            }
+        } else {
+            backend_kind
         };
         let plugins_dir = rmcp_core::layout::plugins_dir();
 
         let mut cmd = Command::new(&worker_exe);
-        if let Some(dir) = &ida_dir {
-            cmd.env("REVERSE_MCP_IDA_DIR", dir);
-            // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
-            // the loader resolves them without a system-wide PATH entry.
-            let path = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", format!("{};{}", dir.display(), path));
-        }
+        cmd.env("REVERSE_MCP_IDA_DIR", &ida_dir);
+        // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
+        // the loader resolves them without a system-wide PATH entry.
+        let path = std::env::var("PATH").unwrap_or_default();
+        cmd.env("PATH", format!("{};{}", ida_dir.display(), path));
         // Portable plugins: IDAUSR points at the exe-relative plugins dir so
         // plugins come only from reverse-mcp's layout, never the IDA install
         // dir or %APPDATA%\.idapro.
@@ -224,8 +248,31 @@ impl WorkerPool {
         Ok(handle)
     }
 
-    pub async fn close(&mut self, db: &str) -> Result<()> {
-        let idx = self
+    /// Does the located worker binary support the idalib backend? Probed
+    /// once by running `reverse-mcp-worker --probe-backend idalib` (the
+    /// worker prints `idalib` and exits). Falls back to false.
+    fn worker_has_idalib_feature(&mut self) -> bool {
+        if let Some(flag) = self.idalib_feature {
+            return flag;
+        }
+        let detected = self
+            .worker_exe
+            .as_ref()
+            .and_then(|exe| {
+                let out = std::process::Command::new(exe)
+                    .arg("--probe-backend")
+                    .arg("idalib")
+                    .output()
+                    .ok()?;
+                let s = String::from_utf8_lossy(&out.stdout);
+                Some(s.trim() == "idalib")
+            })
+            .unwrap_or(false);
+        self.idalib_feature = Some(detected);
+        detected
+    }
+
+    pub async fn close(&mut self, db: &str) -> Result<()> {        let idx = self
             .sessions
             .iter()
             .position(|(h, _)| h == db)

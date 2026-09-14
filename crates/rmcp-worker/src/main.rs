@@ -10,6 +10,23 @@ mod dispatch;
 mod state;
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // --probe-backend <kind>: print "kind" and exit 0 if built with it.
+    // Used by the broker to detect whether the worker binary supports the
+    // real idalib backend without spawning a session.
+    if args.first().map(String::as_str) == Some("--probe-backend") {
+        let kind = args.get(1).map(String::as_str).unwrap_or("");
+        let supported = match kind {
+            "mock" => true,
+            "idalib" => cfg!(feature = "idalib"),
+            _ => false,
+        };
+        if supported {
+            println!("{kind}");
+            std::process::exit(0);
+        }
+        std::process::exit(1);
+    }
     let code = run();
     std::process::exit(code);
 }

@@ -27,19 +27,26 @@ async fn main() {
             .await
         }
         Some("selftest") => cli::cmd_selftest().await,
+        Some("ida") => match args.get(1).map(String::as_str) {
+            Some("list") => cli::cmd_ida_list(args.get(2).map(String::as_str)),
+            _ => {
+                eprintln!("usage: reverse-mcp ida list");
+                2
+            }
+        },
         Some("version") | Some("--version") | Some("-V") => {
             println!("reverse-mcp {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Some(other) => {
             eprintln!(
-                "unknown subcommand '{other}' (serve|doctor|open|sessions|inspect|decompile|selftest|version)"
+                "unknown subcommand '{other}' (serve|doctor|ida list|open|sessions|inspect|decompile|selftest|version)"
             );
             2
         }
         None => {
             eprintln!(
-                "usage: reverse-mcp <serve|doctor|open|sessions|inspect|decompile|selftest|version>"
+                "usage: reverse-mcp <serve|doctor|ida list|open|sessions|inspect|decompile|selftest|version>"
             );
             2
         }
@@ -127,23 +134,46 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
         ok = false;
     }
 
-    // IDA discovery
+    // IDA discovery (multi-version)
     let explicit: Option<PathBuf> = ida_dir_override.map(PathBuf::from);
-    match rmcp_core::discovery::discover(explicit.as_deref()) {
-        Ok(install) => println!(
-            "ida: found {} (source: {})",
-            install.dir.display(),
-            install.source
-        ),
-        Err(e) => {
-            println!("ida: NOT FOUND — {e}");
-            ok = false;
-        }
+    let installs = rmcp_core::discovery::discover_all(explicit.as_deref());
+    if installs.is_empty() {
+        println!("ida: NOT FOUND");
+        ok = false;
+    }
+    for inst in &installs {
+        let backend = match inst.backend {
+            rmcp_core::discovery::BackendStatus::Ready => "backend ready",
+            rmcp_core::discovery::BackendStatus::Unavailable => "backend unavailable",
+        };
+        let decos = if inst.decompilers.is_empty() {
+            "no hexrays decompilers detected".to_string()
+        } else {
+            inst.decompilers
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        println!(
+            "ida {}: {} (source: {}, {}, {})",
+            inst.version,
+            inst.root.display(),
+            inst.source.as_str(),
+            decos,
+            backend
+        );
     }
 
-    // Toolchain note: IDA version is verified at worker startup via
-    // get_library_version() because ida.dll has no usable version resource.
-    println!("ida version check: performed by worker at startup (get_library_version)");
+    // Toolchain note: the discovered version is a best-effort file/name hint;
+    // the worker re-verifies at startup via get_library_version().
+    println!("ida version check: re-verified by worker at startup (get_library_version)");
+
+    // A backend-ready install must exist for real work.
+    if !installs.iter().any(|i| i.backend_ready()) {
+        println!("no backend-ready IDA install (v0.1 verifies 9.2.x only)");
+        ok = false;
+    }
 
     if ok {
         println!("doctor: OK");

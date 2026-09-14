@@ -98,6 +98,11 @@ fn defs() -> Vec<ToolDef> {
             description: "List segments: name, start/end address, permissions.",
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}}}),
         },
+        ToolDef {
+            name: "ida_installations",
+            description: "List discovered IDA installations: version, source, decompilers, backend readiness. Use with ida_db open ida_version to pick one.",
+            schema: json!({"type": "object"}),
+        },
     ]
 }
 
@@ -126,6 +131,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_batch" => tools::tool_batch(broker, args).await,
         "ida_result" => tools::tool_result(broker, args).await,
         "ida_segments" => tools::tool_segments(broker, args).await,
+        "ida_installations" => tools::tool_installations(broker, args).await,
         other => Err(rmcp::ErrorData::invalid_params(
             format!("unknown tool '{other}'"),
             None,

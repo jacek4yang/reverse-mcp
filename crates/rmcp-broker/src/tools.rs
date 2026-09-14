@@ -44,10 +44,12 @@ pub async fn tool_db(broker: &Broker, args: Value) -> Result<Value, McpError> {
                 .ok_or_else(|| mcp_code("invalid_args", "open requires 'path'"))?;
             let mut pool = broker.pool.lock().await;
             // Real backend by default; "mock" stays available for tests and
-            // IDA-less smoke runs.
-            let backend_kind = arg_str(&args, "backend").unwrap_or("idalib");
+            // IDA-less smoke runs. `ida_version` supports "9.2", "latest"
+            // or ranges like ">=9.2,<9.4"; empty = auto-select.
+            let backend_kind = arg_str(&args, "backend").unwrap_or("auto");
+            let ida_version = arg_str(&args, "ida_version").unwrap_or("");
             let handle = pool
-                .spawn_for(path, broker.config.max_workers, backend_kind)
+                .spawn_for(path, broker.config.max_workers, backend_kind, ida_version)
                 .await
                 .map_err(err_from)?;
             broker
@@ -427,6 +429,22 @@ pub async fn tool_segments(broker: &Broker, args: Value) -> Result<Value, McpErr
     let s = session.lock().await;
     let out = s.call("segments", json!({})).await.map_err(err_from)?;
     Ok(json!({"db": db, "segments": out}))
+}
+
+/// ida_installations — all discovered IDA installs with version, source,
+/// decompilers and backend readiness, so the agent can pick one explicitly
+/// via `ida_db(action=open, ida_version=...)`.
+pub async fn tool_installations(broker: &Broker, _args: Value) -> Result<Value, McpError> {
+    let explicit = broker.config.ida_dir.clone();
+    let installs = tokio::task::spawn_blocking(move || {
+        rmcp_core::discovery::discover_all(explicit.as_deref())
+    })
+    .await
+    .map_err(|e| McpError::invalid_params(format!("discovery join: {e}"), None))?;
+    Ok(json!({
+        "installations": installs,
+        "hint": "pass ida_version to ida_db(action=open): exact \"9.2\", \"latest\", or a range \">=9.2,<9.4\"; omit to auto-select (backend-ready highest version)"
+    }))
 }
 
 /// Route a named tool (used by ida_batch).
