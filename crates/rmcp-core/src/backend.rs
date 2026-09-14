@@ -23,6 +23,18 @@ pub struct XrefInfo {
     pub kind: String, // call / data / flow / far / jump
 }
 
+/// Parameters for `ida_graph` requests.
+#[derive(Debug, Clone)]
+pub struct GraphParams {
+    /// `calls` (default) or `cfg`.
+    pub kind: String,
+    /// How many levels to follow from the root function.
+    pub depth: u32,
+    /// Hard caps so hostile inputs cannot flood the output.
+    pub max_nodes: usize,
+    pub max_edges: usize,
+}
+
 /// A string found in the DB.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StringInfo {
@@ -103,7 +115,7 @@ pub trait IdaBackend: Send {
         max_insns: usize,
     ) -> Result<Vec<InsnInfo>>;
     fn decompile(&self, ea: u64) -> Result<Value>;
-    fn graph(&self, ea: u64, depth: u32) -> Result<Value>;
+    fn graph(&self, ea: u64, params: &GraphParams) -> Result<Value>;
 
     fn search_text(&self, needle: &str, limit: usize) -> Result<Vec<Value>>;
     fn search_immediate(&self, value: u64, limit: usize) -> Result<Vec<Value>>;

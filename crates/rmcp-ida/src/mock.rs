@@ -5,8 +5,8 @@
 use serde_json::{Value, json};
 
 use rmcp_core::backend::{
-    Capabilities, FunctionInfo, IdaBackend, InsnInfo, MutationOutcome, SegmentInfo, StringInfo,
-    XrefInfo,
+    Capabilities, FunctionInfo, GraphParams, IdaBackend, InsnInfo, MutationOutcome, SegmentInfo,
+    StringInfo, XrefInfo,
 };
 use rmcp_core::error::{Error, Result};
 
@@ -260,8 +260,9 @@ impl IdaBackend for MockBackend {
         }))
     }
 
-    fn graph(&self, ea: u64, depth: u32) -> Result<Value> {
+    fn graph(&self, ea: u64, params: &GraphParams) -> Result<Value> {
         self.require_open()?;
+        let depth = params.depth;
         let f = self.function_at(ea)?;
         let mut nodes = vec![json!({"ea": f.ea_start, "name": f.name})];
         let mut edges = Vec::new();
@@ -462,7 +463,17 @@ mod tests {
     fn graph_depth1() {
         let mut b = MockBackend::new();
         b.open("x.i64").unwrap();
-        let g = b.graph(0x401000, 1).unwrap();
+        let g = b
+            .graph(
+                0x401000,
+                &GraphParams {
+                    kind: "calls".into(),
+                    depth: 1,
+                    max_nodes: 100,
+                    max_edges: 200,
+                },
+            )
+            .unwrap();
         assert_eq!(g["nodes"].as_array().unwrap().len(), 3); // main + helper + decrypt_packet
     }
 

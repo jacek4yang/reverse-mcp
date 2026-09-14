@@ -125,6 +125,58 @@ async fn real_ida_full_chain() {
         "unexpected pseudocode: {pseudo}"
     );
 
+    // 7b. calls graph rooted at main must find calls at NON-entry addresses:
+    // main's body calls j_helper / j_dispatch / j_decrypt_packet, which are
+    // not at main's entry EA. Function-wide call discovery must find them.
+    let main_ea = info["main_ea"]
+        .as_u64()
+        .or_else(|| {
+            arr.iter()
+                .find(|f| f["name"].as_str() == Some("main"))
+                .and_then(|f| f["ea_start"].as_u64())
+        })
+        .expect("main function");
+    let calls = s
+        .call(
+            "graph",
+            json!({"ea": main_ea, "kind": "calls", "depth": 1, "max_nodes": 100, "max_edges": 200}),
+        )
+        .await
+        .expect("calls graph");
+    let edges = calls["edges"].as_array().expect("edges array");
+    let callees: Vec<&serde_json::Value> = edges
+        .iter()
+        .filter(|e| e["from"].as_u64() == Some(main_ea))
+        .collect();
+    assert!(
+        callees.len() >= 2,
+        "expected >=2 calls from main's body, got {callees:?}"
+    );
+    let helper_in_graph = calls["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|n| n["ea"].as_u64() == Some(helper_ea));
+    assert!(
+        helper_in_graph,
+        "helper must appear in main's calls graph: {calls}"
+    );
+
+    // 7c. cfg graph of main: basic-block flow view (the fixture's main is
+    // mostly linear, so 1 block is legitimate; assert structural validity)
+    let cfg = s
+        .call(
+            "graph",
+            json!({"ea": main_ea, "kind": "cfg", "depth": 1, "max_nodes": 500, "max_edges": 1000}),
+        )
+        .await
+        .expect("cfg graph");
+    let cfg_nodes = cfg["nodes"].as_array().expect("cfg nodes");
+    assert!(!cfg_nodes.is_empty(), "cfg must have >=1 basic block");
+    assert_eq!(cfg_nodes[0]["ea"].as_u64(), Some(main_ea));
+    // function-wide CFG: the root block covers main's entry
+    let cfg_root_covered = cfg_nodes.iter().any(|n| n["ea"].as_u64() == Some(main_ea));
+    assert!(cfg_root_covered, "cfg must include main's entry block");
     // 8. rename + comment
     let ren = s
         .call(
