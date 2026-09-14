@@ -32,6 +32,9 @@ vendor/idalib-sys/sdk/
 
 # Fixture build artifacts
 tests/fixtures/simple.exe
+tests/fixtures/ctf_c.exe
+tests/fixtures/ctf_go.exe
+tests/fixtures/ctf_rust.exe
 tests/fixtures/*.ilk
 tests/fixtures/*.obj
 tests/fixtures/*.pdb
