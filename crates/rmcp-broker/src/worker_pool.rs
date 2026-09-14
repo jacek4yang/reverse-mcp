@@ -146,12 +146,30 @@ impl WorkerPool {
         }
         let worker_exe = self.ensure_worker_exe()?;
         let ida_dir = self.ida_dir.clone();
+        // Resolve the IDA install lazily (discovery may hit the drive scan).
+        let ida_dir = match ida_dir {
+            Some(d) => Some(d),
+            None => match rmcp_core::discovery::discover(None) {
+                Ok(install) => {
+                    self.ida_dir = Some(install.dir.clone());
+                    self.ida_dir.clone()
+                }
+                Err(_) => None,
+            },
+        };
         let plugins_dir = rmcp_core::layout::plugins_dir();
 
         let mut cmd = Command::new(&worker_exe);
         if let Some(dir) = &ida_dir {
             cmd.env("REVERSE_MCP_IDA_DIR", dir);
+            // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
+            // the loader resolves them without a system-wide PATH entry.
+            let path = std::env::var("PATH").unwrap_or_default();
+            cmd.env("PATH", format!("{};{}", dir.display(), path));
         }
+        // Portable plugins: IDAUSR points at the exe-relative plugins dir so
+        // plugins come only from reverse-mcp's layout, never the IDA install
+        // dir or %APPDATA%\.idapro.
         cmd.env("IDAUSR", &plugins_dir);
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());

@@ -23,3 +23,17 @@ GROK_TASK.md
 /cache/
 /sessions/
 *.log
+
+# Vendored idalib SDK material - proprietary, never commit
+vendor/idalib-sys/sdk/
+
+# Local build/test logs
+/vb*.txt
+/vt*.txt
+/vendored_build.txt
+
+# Fixture build artifacts
+tests/fixtures/simple.exe
+tests/fixtures/*.ilk
+tests/fixtures/*.obj
+tests/fixtures/*.pdb

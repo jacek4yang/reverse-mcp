@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "rmcp-ida"
 version.workspace = true
 edition.workspace = true
@@ -11,3 +11,15 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dependencies.idalib]
+path = "../../vendor/idalib"
+optional = true
+
+[dependencies.autocxx]
+version = "0.27"
+optional = true
+
+[features]
+idalib = ["dep:idalib", "dep:autocxx"]
+default = []

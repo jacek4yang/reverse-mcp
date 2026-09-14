@@ -1,4 +1,4 @@
-[workspace]
+﻿[workspace]
 resolver = "3"
 members = [
     ".",
@@ -8,6 +8,8 @@ members = [
     "crates/rmcp-worker",
     "crates/rmcp-broker",
 ]
+
+exclude = ["vendor/*"]
 
 [package]
 name = "reverse-mcp"

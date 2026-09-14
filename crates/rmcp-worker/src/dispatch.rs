@@ -53,14 +53,31 @@ fn dispatch(
                 .get("kind")
                 .and_then(|v| v.as_str())
                 .unwrap_or("mock");
-            if kind != "mock" {
-                return Err(Error::CapabilityUnavailable {
-                    capability: "idalib".into(),
-                    reason: format!("backend kind '{kind}' not built into this worker"),
-                });
+            match kind {
+                "mock" => {
+                    state.backend = Some(Box::new(rmcp_ida::MockBackend::new()));
+                    Ok(json!({"backend": "mock"}))
+                }
+                "idalib" => {
+                    #[cfg(feature = "idalib")]
+                    {
+                        // idalib requires init + all calls on the main thread;
+                        // worker dispatch runs on main, so this is satisfied.
+                        idalib::init_library();
+                        idalib::enable_console_messages(false);
+                        state.backend = Some(Box::new(rmcp_ida::IdaLibBackend::new()));
+                        Ok(json!({"backend": "idalib"}))
+                    }
+                    #[cfg(not(feature = "idalib"))]
+                    Err(Error::CapabilityUnavailable {
+                        capability: "idalib".into(),
+                        reason: "worker not built with the idalib feature".into(),
+                    })
+                }
+                other => Err(Error::Worker(format!(
+                    "backend kind '{other}' not built into this worker"
+                ))),
             }
-            state.backend = Some(Box::new(rmcp_ida::MockBackend::new()));
-            Ok(json!({"backend": "mock"}))
         }
         "shutdown" => {
             state.closed = true;

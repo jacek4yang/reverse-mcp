@@ -1,4 +1,4 @@
-﻿//! Hand-written `#[repr(C)]` definitions for the IDA 9.2 SDK types that
+//! Hand-written `#[repr(C)]` definitions for the IDA 9.2 SDK types that
 //! bindgen/autocxx render opaque (forward declaration encountered before the
 //! definition breaks codegen). Layouts were extracted from the real
 //! `idalib-sys 0.7.2+9.2.250908` SDK headers with clang
@@ -172,7 +172,17 @@ pub struct range_t {
     pub end_ea: ea_t,
 }
 
-/// `op_t` - fully mirrored (size 40, align 8).
+impl range_t {
+    pub fn contains(&self, ea: u64) -> bool {
+        self.start_ea <= ea && self.end_ea > ea
+    }
+    pub fn size(&self) -> u64 {
+        self.end_ea - self.start_ea
+    }
+}
+/// op_t - fully mirrored (size 40, align 8), matching IDA 9.2 SDK `ua.hpp`.
+/// The SDK has four anonymous unions; we flatten them (the Rust accessor layer
+/// in vendor/idalib/src/insn.rs interprets the fields per operand type).
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct op_t {
@@ -182,17 +192,19 @@ pub struct op_t {
     pub offo: i8,
     pub flags: u8,
     pub dtype: u8,
-    pub specflag1: u8,
-    pub specflag2: u8,
-    pub specflag3: u8,
-    pub specflag4: u8,
-    pub specval: u16,
-    pub addr: ea_t,
+    /// union { uint16 reg; uint16 phrase; } (aliased, same size)
+    pub reg: u16,
+    /// union { uval_t value; struct { uint16 low; uint16 high; } value_shorts; }
     pub value: ea_t,
-    pub specval_shorts: u16,
-    pub op_t_specific_id: u16,
+    /// union { ea_t addr; struct { uint16 low; uint16 high; } addr_shorts; }
+    pub addr: ea_t,
+    /// union { ea_t specval; struct { uint16 low; uint16 high; } specval_shorts; }
+    pub specval: ea_t,
+    pub specflag1: i8,
+    pub specflag2: i8,
+    pub specflag3: i8,
+    pub specflag4: i8,
 }
-
 /// `insn_t` - fully mirrored (size 360, align 8).
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -439,11 +451,113 @@ impl core::fmt::Debug for cexpr_u {
         f.write_str("cexpr_u")
     }
 }
+/// `gdl_graph_t` - abstract graph interface; never constructed in Rust.
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct gdl_graph_t {
+    _opaque: [u8; 0],
+}
+unsafe impl cxx::ExternType for gdl_graph_t {
+    type Id = cxx::type_id!("gdl_graph_t");
+    type Kind = cxx::kind::Opaque;
+}
+/// xrefblk_t - xref enumerator (size 24, align 8).
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct xrefblk_t {
+    pub from: ea_t,
+    pub to: ea_t,
+    pub iscode: bool,
+    pub type_: u8,
+    pub user: bool,
+    pub _flags: u8,
+    pub _pad: [u8; 2],
+}
+unsafe impl cxx::ExternType for xrefblk_t {
+    type Id = cxx::type_id!("xrefblk_t");
+    type Kind = cxx::kind::Trivial;
+}
+/// `qbasic_block_t` - opaque; accessed through idalib helpers.
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct qbasic_block_t {
+    _opaque: [u8; 0],
+}
+
+/// `qflow_chart_t` - opaque; accessed through idalib helpers.
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct qflow_chart_t {
+    _opaque: [u8; 0],
+}
+
+unsafe impl cxx::ExternType for qbasic_block_t {
+    type Id = cxx::type_id!("qbasic_block_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for qflow_chart_t {
+    type Id = cxx::type_id!("qflow_chart_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for range_t {
+    type Id = cxx::type_id!("range_t");
+    type Kind = cxx::kind::Trivial;
+}
+unsafe impl cxx::ExternType for insn_t {
+    type Id = cxx::type_id!("insn_t");
+    type Kind = cxx::kind::Trivial;
+}
+unsafe impl cxx::ExternType for op_t {
+    type Id = cxx::type_id!("op_t");
+    type Kind = cxx::kind::Trivial;
+}
+unsafe impl cxx::ExternType for cfunc_t {
+    type Id = cxx::type_id!("cfunc_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for citem_t {
+    type Id = cxx::type_id!("citem_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for cinsn_t {
+    type Id = cxx::type_id!("cinsn_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for cexpr_t {
+    type Id = cxx::type_id!("cexpr_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for cblock_t {
+    type Id = cxx::type_id!("cblock_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for cswitch_t {
+    type Id = cxx::type_id!("cswitch_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for ctry_t {
+    type Id = cxx::type_id!("ctry_t");
+    type Kind = cxx::kind::Opaque;
+}
+unsafe impl cxx::ExternType for cthrow_t {
+    type Id = cxx::type_id!("cthrow_t");
+    type Kind = cxx::kind::Opaque;
+}
 // Layout verification - matches values measured from the real SDK headers.
 // ---------------------------------------------------------------------------
 const _: () = {
     assert!(core::mem::size_of::<range_t>() == 16);
     assert!(core::mem::align_of::<range_t>() == 8);
+    // op_t offsets must match the IDA 9.2 SDK ua.hpp layout exactly
+    // (n=0, reg/phrase union=6, value=8, addr=16, specval=24, specflag1=32).
+    assert!(core::mem::offset_of!(op_t, n) == 0);
+    assert!(core::mem::offset_of!(op_t, type_) == 1);
+    assert!(core::mem::offset_of!(op_t, reg) == 6);
+    assert!(core::mem::offset_of!(op_t, value) == 8);
+    assert!(core::mem::offset_of!(op_t, addr) == 16);
+    assert!(core::mem::offset_of!(op_t, specval) == 24);
+    assert!(core::mem::offset_of!(op_t, specflag1) == 32);
+    assert!(core::mem::offset_of!(op_t, specflag4) == 35);
     assert!(core::mem::size_of::<op_t>() == 40);
     assert!(core::mem::size_of::<insn_t>() == 360);
     assert!(core::mem::size_of::<argloc_t>() == 16);

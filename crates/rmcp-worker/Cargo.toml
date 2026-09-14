@@ -13,6 +13,14 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+[dependencies.idalib]
+path = "../../vendor/idalib"
+optional = true
+
+[features]
+idalib = ["rmcp-ida/idalib", "dep:idalib"]
+default = []
+
 [[bin]]
 name = "reverse-mcp-worker"
 path = "src/main.rs"

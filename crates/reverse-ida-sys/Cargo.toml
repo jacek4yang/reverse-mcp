@@ -1,7 +1,10 @@
-[package]
+﻿[package]
 name = "reverse-ida-sys"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Hand-written FFI layout definitions for the IDA 9.2 SDK types that generated bindings render opaque"
+
+[dependencies.cxx]
+version = "1"
