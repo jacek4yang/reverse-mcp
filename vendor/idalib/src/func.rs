@@ -271,7 +271,12 @@ impl<'a> Function<'a> {
 
 impl<'a> FunctionCFG<'a> {
     fn calc_block_type_via_helper(&self, id: usize) -> fc_block_type_t {
-        let v = unsafe { idalib_sys::ffix::idalib_qflow_graph_calc_block_type(self.flow_chart.as_ref().expect("valid pointer"), id) };
+        let v = unsafe {
+            idalib_sys::ffix::idalib_qflow_graph_calc_block_type(
+                self.flow_chart.as_ref().expect("valid pointer"),
+                id,
+            )
+        };
         unsafe { mem::transmute::<u32, fc_block_type_t>(v) }
     }
 
@@ -304,7 +309,11 @@ impl<'a> FunctionCFG<'a> {
     }
 
     pub fn blocks_count(&self) -> usize {
-        unsafe { idalib_sys::ffix::idalib_qflow_graph_size(self.flow_chart.as_ref().expect("valid pointer")) }
+        unsafe {
+            idalib_sys::ffix::idalib_qflow_graph_size(
+                self.flow_chart.as_ref().expect("valid pointer"),
+            )
+        }
     }
 
     pub fn blocks<'b>(&'b self) -> impl ExactSizeIterator<Item = BasicBlock<'b>> + 'b {

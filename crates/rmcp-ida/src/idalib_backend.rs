@@ -302,11 +302,7 @@ impl IdaBackend for IdaLibBackend {
         let mut nodes = vec![json!({"ea": start, "name": name})];
         let mut edges = Vec::new();
         if depth >= 1 {
-            let callees: Vec<u64> = self
-                .xrefs_from(start)?
-                .into_iter()
-                .map(|x| x.to)
-                .collect();
+            let callees: Vec<u64> = self.xrefs_from(start)?.into_iter().map(|x| x.to).collect();
             for to in callees {
                 if let Ok(callee) = self.function_at(to) {
                     nodes.push(json!({"ea": callee.ea_start, "name": callee.name}));
@@ -389,8 +385,7 @@ impl IdaBackend for IdaLibBackend {
             let _ = self.idb()?;
             let cname = std::ffi::CString::new(new_name)
                 .map_err(|e| Error::Worker(format!("bad name: {e}")))?;
-            let ok =
-                unsafe { idalib::ffi::backend::idalib_set_name(into_ea(ea), cname.as_ptr()) };
+            let ok = unsafe { idalib::ffi::backend::idalib_set_name(into_ea(ea), cname.as_ptr()) };
             if !ok {
                 return Err(Error::Worker(format!(
                     "rename failed at {ea:#x} (name invalid or in use)"

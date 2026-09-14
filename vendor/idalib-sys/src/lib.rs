@@ -524,7 +524,9 @@ pub mod hexrays {
         include!(concat!(env!("OUT_DIR"), "/hexrays.rs"));
     }
 
-    pub use reverse_ida_sys::{cblock_t, cexpr_t, cfunc_t, cinsn_t, citem_t, cswitch_t, cthrow_t, ctry_t};
+    pub use reverse_ida_sys::{
+        cblock_t, cexpr_t, cfunc_t, cinsn_t, citem_t, cswitch_t, cthrow_t, ctry_t,
+    };
 
     pub use super::ffi::{
         carg_t, carglist_t, cfuncptr_t, init_hexrays_plugin, term_hexrays_plugin,
@@ -534,14 +536,6 @@ pub mod hexrays {
         idalib_hexrays_cblock_len, idalib_hexrays_cfunc_pseudocode, idalib_hexrays_cfuncptr_inner,
         idalib_hexrays_decompile_func,
     };
-
-
-
-
-
-
-
-
 
     pub unsafe fn decompile_func(
         f: *mut super::ffi::func_t,
@@ -668,7 +662,6 @@ pub mod pod {
 
     pub use reverse_ida_sys::{insn_t, op_t};
     pub type op_dtype_t = u8;
-
 }
 
 #[cxx::bridge]
@@ -1088,15 +1081,14 @@ pub mod insn {
 }
 pub mod func {
     pub use super::ffi::{
-        calc_thunk_func_target, fc_block_type_t, func_t, get_func, get_func_num,
-        get_func_qty, getn_func, lock_func,
+        calc_thunk_func_target, fc_block_type_t, func_t, get_func, get_func_num, get_func_qty,
+        getn_func, lock_func,
     };
     pub use super::ffi::{qbasic_block_t, qflow_chart_t};
     pub use super::ffix::{
         idalib_func_flags, idalib_func_flow_chart, idalib_func_name, idalib_get_func_cmt,
-        idalib_qbasic_block_preds, idalib_qbasic_block_succs, idalib_qflow_graph_getn_block,
-        idalib_qflow_graph_size, idalib_qflow_graph_calc_block_type,
-        idalib_set_func_cmt,
+        idalib_qbasic_block_preds, idalib_qbasic_block_succs, idalib_qflow_graph_calc_block_type,
+        idalib_qflow_graph_getn_block, idalib_qflow_graph_size, idalib_set_func_cmt,
     };
 
     pub mod flags {
@@ -1131,8 +1123,8 @@ pub mod segment {
         SEG_MAX_SEGTYPE_CODE, SEG_NORM, SEG_NULL, SEG_UNDF, SEG_XTRN, SEGPERM_EXEC, SEGPERM_MAXVAL,
         SEGPERM_READ, SEGPERM_WRITE, get_segm_by_name, get_segm_qty, getnseg, getseg, lock_segment,
         saAbs, saGroup, saRel_MAX_ALIGN_CODE, saRel4K, saRel32Bytes, saRel64Bytes, saRel128Bytes,
-        saRelQword, saRel512Bytes, saRel1024Bytes, saRel2048Bytes, saRelByte, saRelWord, saRelPara,
-        saRelPage, saRelDble, segment_t,
+        saRel512Bytes, saRel1024Bytes, saRel2048Bytes, saRelByte, saRelDble, saRelPage, saRelPara,
+        saRelQword, saRelWord, segment_t,
     };
     pub use super::ffix::{
         idalib_segm_align, idalib_segm_bitness, idalib_segm_bytes, idalib_segm_name,

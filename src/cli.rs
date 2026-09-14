@@ -195,7 +195,10 @@ async fn mock_chain() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let session = pool.session(&handle).await.ok_or("session gone")?;
     let s = session.lock().await;
-    let info = s.call("db.info", json!({})).await.map_err(|e| e.to_string())?;
+    let info = s
+        .call("db.info", json!({}))
+        .await
+        .map_err(|e| e.to_string())?;
     let fns = s
         .call("functions", json!({"offset": 0, "limit": 10}))
         .await
@@ -224,10 +227,10 @@ async fn real_chain(ida_dir: &std::path::Path) -> Result<(), String> {
     // the same binary anyway, but we want the IDA dir on PATH).
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/simple.c");
     let _ = fixture; // fixture is only used by the integration test; here we
-                     // just verify the real backend initializes.
+    // just verify the real backend initializes.
 
-    use std::process::{Command, Stdio};
     use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
 
     let mut cmd = Command::new(&worker);
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
@@ -281,12 +284,24 @@ pub fn cmd_ida_list(explicit: Option<&str>) -> i32 {
         let decos = if inst.decompilers.is_empty() {
             "-"
         } else {
-            &inst.decompilers.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(",")
+            &inst
+                .decompilers
+                .iter()
+                .map(|d| d.name.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
         };
         println!(
             "{:<6}  {:<10}  {:<12}  {:<24}  {:<12}  {}",
             inst.version.to_string(),
-            format!("{}-bit", if inst.arch == rmcp_core::discovery::Arch::X64 { 64 } else { 32 }),
+            format!(
+                "{}-bit",
+                if inst.arch == rmcp_core::discovery::Arch::X64 {
+                    64
+                } else {
+                    32
+                }
+            ),
             inst.source.as_str(),
             decos,
             backend,

@@ -30,7 +30,9 @@ use crate::error::{Error, Result};
 // ---------------------------------------------------------------------------
 
 /// IDA version number (major.minor.build).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -40,7 +42,11 @@ pub struct Version {
 
 impl Version {
     pub fn new(major: u32, minor: u32, build: u32) -> Self {
-        Self { major, minor, build }
+        Self {
+            major,
+            minor,
+            build,
+        }
     }
 
     /// Stable key like `"9_2"` used for backend feature naming.
@@ -55,8 +61,15 @@ impl Version {
         }
         let major = parts[0].trim().parse().ok()?;
         let minor = parts[1].trim().parse().ok()?;
-        let build = parts.get(2).and_then(|b| b.trim().parse().ok()).unwrap_or(0);
-        Some(Self { major, minor, build })
+        let build = parts
+            .get(2)
+            .and_then(|b| b.trim().parse().ok())
+            .unwrap_or(0);
+        Some(Self {
+            major,
+            minor,
+            build,
+        })
     }
 }
 
@@ -115,20 +128,24 @@ impl IdaRequirement {
         for part in req.split(',') {
             let part = part.trim();
             if let Some(rest) = part.strip_prefix(">=") {
-                let v = Version::parse(rest)
-                    .ok_or_else(|| Error::Config(format!("bad version in requirement: '{part}'")))?;
+                let v = Version::parse(rest).ok_or_else(|| {
+                    Error::Config(format!("bad version in requirement: '{part}'"))
+                })?;
                 constraints.push(Constraint::AtLeast(v));
             } else if let Some(rest) = part.strip_prefix("<=") {
-                let v = Version::parse(rest)
-                    .ok_or_else(|| Error::Config(format!("bad version in requirement: '{part}'")))?;
+                let v = Version::parse(rest).ok_or_else(|| {
+                    Error::Config(format!("bad version in requirement: '{part}'"))
+                })?;
                 constraints.push(Constraint::AtMost(v));
             } else if let Some(rest) = part.strip_prefix('>') {
-                let v = Version::parse(rest)
-                    .ok_or_else(|| Error::Config(format!("bad version in requirement: '{part}'")))?;
+                let v = Version::parse(rest).ok_or_else(|| {
+                    Error::Config(format!("bad version in requirement: '{part}'"))
+                })?;
                 constraints.push(Constraint::Greater(v));
             } else if let Some(rest) = part.strip_prefix('<') {
-                let v = Version::parse(rest)
-                    .ok_or_else(|| Error::Config(format!("bad version in requirement: '{part}'")))?;
+                let v = Version::parse(rest).ok_or_else(|| {
+                    Error::Config(format!("bad version in requirement: '{part}'"))
+                })?;
                 constraints.push(Constraint::Less(v));
             } else {
                 let v = Version::parse(part).ok_or_else(|| {
@@ -252,8 +269,14 @@ fn runtime_paths() -> RuntimePaths {
             ida: "ida.dll",
             idalib: "idalib.dll",
             decompilers: &[
-                "hexx64.dll", "hexarm64.dll", "hexarm.dll", "hexmips.dll",
-                "hexppc.dll", "hexarc.dll", "hexrv.dll", "hexrays.dll",
+                "hexx64.dll",
+                "hexarm64.dll",
+                "hexarm.dll",
+                "hexmips.dll",
+                "hexppc.dll",
+                "hexarc.dll",
+                "hexrv.dll",
+                "hexrays.dll",
             ],
         }
     }
@@ -347,8 +370,18 @@ fn pe_file_version(path: &Path) -> Option<Version> {
 #[link(name = "version")]
 unsafe extern "system" {
     fn GetFileVersionInfoSizeW(filename: *const u16, handle: *mut u32) -> u32;
-    fn GetFileVersionInfoW(filename: *const u16, handle: u32, datasize: u32, data: *mut std::ffi::c_void) -> i32;
-    fn VerQueryValueW(pblock: *const std::ffi::c_void, lpsubblock: *const u16, lplpbuffer: *mut *const u16, pucch: *mut u32) -> i32;
+    fn GetFileVersionInfoW(
+        filename: *const u16,
+        handle: u32,
+        datasize: u32,
+        data: *mut std::ffi::c_void,
+    ) -> i32;
+    fn VerQueryValueW(
+        pblock: *const std::ffi::c_void,
+        lpsubblock: *const u16,
+        lplpbuffer: *mut *const u16,
+        pucch: *mut u32,
+    ) -> i32;
 }
 
 #[cfg(windows)]
@@ -380,8 +413,14 @@ unsafe fn query_translation_codepages(data: &[u8]) -> Option<Vec<String>> {
     let subblock = "\\VarFileInfo\\Translation\u{0}";
     let mut ptr: *const u16 = std::ptr::null();
     let mut len: u32 = 0;
-    if !unsafe { ver_query_value(data.as_ptr() as *const std::ffi::c_void, subblock, &mut ptr, &mut len) }
-        || ptr.is_null()
+    if !unsafe {
+        ver_query_value(
+            data.as_ptr() as *const std::ffi::c_void,
+            subblock,
+            &mut ptr,
+            &mut len,
+        )
+    } || ptr.is_null()
         || len < 4
     {
         return None;
@@ -396,11 +435,7 @@ unsafe fn query_translation_codepages(data: &[u8]) -> Option<Vec<String>> {
             out.push(format!("{:04x}{:04x}", lang, cp));
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 #[cfg(windows)]
@@ -408,8 +443,14 @@ unsafe fn query_translation_codepages(data: &[u8]) -> Option<Vec<String>> {
 unsafe fn query_string_value(data: &[u8], subblock: &str) -> Option<String> {
     let mut ptr: *const u16 = std::ptr::null();
     let mut len: u32 = 0;
-    if unsafe { ver_query_value(data.as_ptr() as *const std::ffi::c_void, subblock, &mut ptr, &mut len) }
-        && !ptr.is_null()
+    if unsafe {
+        ver_query_value(
+            data.as_ptr() as *const std::ffi::c_void,
+            subblock,
+            &mut ptr,
+            &mut len,
+        )
+    } && !ptr.is_null()
         && len > 0
     {
         let slice = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
@@ -550,7 +591,11 @@ fn version_from_name(name: &str) -> Option<Version> {
 }
 
 /// Validate a candidate directory into a full `IdaInstallation`.
-pub fn validate(root: &Path, source: DiscoverySource, hint: Option<&str>) -> Result<IdaInstallation> {
+pub fn validate(
+    root: &Path,
+    source: DiscoverySource,
+    hint: Option<&str>,
+) -> Result<IdaInstallation> {
     let rt = runtime_paths();
     let ida = root.join(rt.ida);
     let idalib = root.join(rt.idalib);
@@ -602,7 +647,11 @@ pub fn discover_all(explicit: Option<&Path>) -> Vec<IdaInstallation> {
     let mut out: Vec<IdaInstallation> = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
 
-    let push = |root: PathBuf, source: DiscoverySource, hint: Option<&str>, out: &mut Vec<IdaInstallation>, seen: &mut Vec<PathBuf>| {
+    let push = |root: PathBuf,
+                source: DiscoverySource,
+                hint: Option<&str>,
+                out: &mut Vec<IdaInstallation>,
+                seen: &mut Vec<PathBuf>| {
         let canonical = root.canonicalize().unwrap_or(root.clone());
         if seen.contains(&canonical) {
             return;
@@ -615,7 +664,13 @@ pub fn discover_all(explicit: Option<&Path>) -> Vec<IdaInstallation> {
 
     // 1. explicit
     if let Some(d) = explicit {
-        push(d.to_path_buf(), DiscoverySource::Explicit, None, &mut out, &mut seen);
+        push(
+            d.to_path_buf(),
+            DiscoverySource::Explicit,
+            None,
+            &mut out,
+            &mut seen,
+        );
         if !out.is_empty() {
             return out;
         }
@@ -626,7 +681,13 @@ pub fn discover_all(explicit: Option<&Path>) -> Vec<IdaInstallation> {
         let d = PathBuf::from(d);
         // IDADIR may point at the install root or a subdir; walk up a bit.
         for candidate in std::iter::once(d.clone()).chain(ancestors(&d).take(2)) {
-            push(candidate, DiscoverySource::EnvVar, None, &mut out, &mut seen);
+            push(
+                candidate,
+                DiscoverySource::EnvVar,
+                None,
+                &mut out,
+                &mut seen,
+            );
         }
     }
 
@@ -637,7 +698,13 @@ pub fn discover_all(explicit: Option<&Path>) -> Vec<IdaInstallation> {
 
     // 4. OS-native discovery
     for (d, hint) in os_native_candidates() {
-        push(d, DiscoverySource::OsNative, hint.as_deref(), &mut out, &mut seen);
+        push(
+            d,
+            DiscoverySource::OsNative,
+            hint.as_deref(),
+            &mut out,
+            &mut seen,
+        );
     }
 
     // 5. common default paths
@@ -749,7 +816,14 @@ fn os_native_candidates() -> Vec<(PathBuf, Option<String>)> {
     // macOS: /Applications and ~/Applications hold "IDA Professional 9.x.app".
     #[cfg(target_os = "macos")]
     {
-        for base in [Path::new("/Applications"), home_dir().as_deref().map(|h| h.join("Applications")).as_deref().unwrap_or(Path::new("/nonexistent"))] {
+        for base in [
+            Path::new("/Applications"),
+            home_dir()
+                .as_deref()
+                .map(|h| h.join("Applications"))
+                .as_deref()
+                .unwrap_or(Path::new("/nonexistent")),
+        ] {
             if let Ok(entries) = std::fs::read_dir(base) {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
@@ -820,7 +894,10 @@ fn parse_desktop_exec(path: &Path) -> Option<String> {
 fn reg_hint_candidates() -> Vec<PathBuf> {
     let mut out = Vec::new();
     // exe-relative and CWD hints: <dir>/ida.reg containing "Root=path".
-    for base in [crate::layout::exe_dir(), std::env::current_dir().unwrap_or_default()] {
+    for base in [
+        crate::layout::exe_dir(),
+        std::env::current_dir().unwrap_or_default(),
+    ] {
         let hint = base.join("ida.reg");
         if let Ok(raw) = std::fs::read_to_string(&hint) {
             for line in raw.lines() {
@@ -848,13 +925,17 @@ fn reg_hint_candidates() -> Vec<PathBuf> {
 /// whose display name mentions IDA and that expose InstallLocation.
 fn registry_uninstall_entries() -> Vec<(PathBuf, Option<String>)> {
     use winreg::RegKey;
-    use winreg::enums::{HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, KEY_READ};
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ};
     let mut out = Vec::new();
     let paths = [
         r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
     ];
-    for (hive, path) in [(HKEY_LOCAL_MACHINE, paths[0]), (HKEY_LOCAL_MACHINE, paths[1]), (HKEY_CURRENT_USER, paths[0])] {
+    for (hive, path) in [
+        (HKEY_LOCAL_MACHINE, paths[0]),
+        (HKEY_LOCAL_MACHINE, paths[1]),
+        (HKEY_CURRENT_USER, paths[0]),
+    ] {
         let hk = RegKey::predef(hive);
         let Ok(key) = hk.open_subkey_with_flags(path, KEY_READ) else {
             continue;
