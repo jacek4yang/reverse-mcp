@@ -5,24 +5,42 @@
 
 use std::path::PathBuf;
 
+mod cli;
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("serve") => cmd_serve(args.get(1).map(String::as_str)).await,
         Some("doctor") => cmd_doctor(args.get(1).map(String::as_str)),
+        Some("open") => cli::cmd_open(args.get(1).map(String::as_str).unwrap_or("")).await,
+        Some("sessions") => cli::cmd_sessions().await,
+        Some("inspect") => {
+            cli::cmd_inspect(args.get(1).map(String::as_str), args.get(2).map(String::as_str))
+                .await
+        }
+        Some("decompile") => {
+            cli::cmd_decompile(
+                args.get(1).map(String::as_str),
+                args.get(2).map(String::as_str),
+            )
+            .await
+        }
+        Some("selftest") => cli::cmd_selftest().await,
         Some("version") | Some("--version") | Some("-V") => {
             println!("reverse-mcp {}", env!("CARGO_PKG_VERSION"));
             0
         }
         Some(other) => {
             eprintln!(
-                "unknown subcommand '{other}' (serve|doctor|version available in this build)"
+                "unknown subcommand '{other}' (serve|doctor|open|sessions|inspect|decompile|selftest|version)"
             );
             2
         }
         None => {
-            eprintln!("usage: reverse-mcp <serve|doctor|version>");
+            eprintln!(
+                "usage: reverse-mcp <serve|doctor|open|sessions|inspect|decompile|selftest|version>"
+            );
             2
         }
     };
