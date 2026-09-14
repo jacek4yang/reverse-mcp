@@ -4,9 +4,13 @@
 
 MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** — a single `reverse-mcp.exe` (broker + self-spawned workers in the same binary) driving IDA through its native idalib API (no `idat`, no Python).
 
+- Architecture details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Tool reference: [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md)
+- Honest limitations & roadmap: [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)
+
 ## What it does
 
-An agent connects over MCP (stdio today, HTTP in a later release) and gets 17 tools:
+An agent connects over MCP (stdio) and gets 17 tools:
 
 | tool | purpose |
 |---|---|
@@ -18,7 +22,7 @@ An agent connects over MCP (stdio today, HTTP in a later release) and gets 17 to
 | `ida_decompile` | Hex-Rays pseudocode |
 | `ida_disassemble` | bounded disassembly ranges |
 | `ida_xrefs` | cross references (to/from) |
-| `ida_graph` | call graph around a function |
+| `ida_graph` | `kind=calls` (function-wide call discovery) or `kind=cfg` (basic-block flow), bounded |
 | `ida_search` | text & immediate search |
 | `ida_bytes` | read bytes |
 | `ida_types` | local type view |
@@ -30,10 +34,22 @@ An agent connects over MCP (stdio today, HTTP in a later release) and gets 17 to
 
 Large outputs spill to a result store; truncation is always flagged, never silent.
 
+## Guarantees
+
+- **Optimistic concurrency** — every mutation (`ida_edit`, `ida_bytes
+  action=patch`, `ida_types action=set`) accepts `expected_revision`. A stale
+  value is rejected with `revision_conflict` before anything is touched; the
+  revision increments only after a confirmed successful mutation.
+- **Honest capabilities** — unimplemented operations fail with
+  `capability_unavailable` instead of faking success. See
+  [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what is not implemented.
+- **Bounded output** — every list/search/graph has hard caps; oversized
+  responses spill to handles read via `ida_result`.
+
 ## Architecture
 
 ```
-agent ←→ broker (reverse-mcp.exe, MCP stdio/HTTP)
+agent ←→ broker (reverse-mcp.exe serve, MCP stdio)
               └→ spawns itself in `worker` mode per open DB
                     └→ idalib (IDA 9.2 native FFI, one IDB per process)
 ```
@@ -91,14 +107,21 @@ cargo build --release -p reverse-mcp --features idalib
 ## Development
 
 ```powershell
-cargo test --workspace          # mock backend, no IDA needed
-cargo test -p rmcp-worker --features idalib -- --ignored   # real-IDA chain (local only)
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
+cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker --all-targets -- -D warnings
+
+# real-IDA integration tests (local, requires IDADIR + license)
+cargo test --release -p reverse-mcp --features idalib --test idalib_real -- --ignored
 ```
+
+Note: the `--features idalib` build statically imports `ida.dll`/`idalib.dll`,
+so the exe requires the IDA install directory on `PATH` at startup. Mock-only
+builds (feature off, the default) have no IDA imports and run anywhere — this
+is what CI exercises.
 
 ## Contributing
 
-`main` is protected: changes land via PR (squash merge preferred). CI runs fmt, clippy `-D warnings`, and the mock-backend test suite on windows-latest.
+`main` is protected: changes land via PR (squash merge preferred). CI runs fmt, clippy `-D warnings`, and the mock-backend test suite on windows-latest. The real-IDA suite runs locally before any release.
 
 ## License & scope
 
