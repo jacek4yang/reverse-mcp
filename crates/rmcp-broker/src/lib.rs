@@ -18,6 +18,7 @@ use tokio::sync::Mutex;
 use rmcp_core::config::Config;
 use rmcp_core::result_store::ResultStore;
 
+pub mod recovery;
 mod registry;
 pub mod tools;
 pub mod worker_pool;
@@ -129,6 +130,55 @@ impl Broker {
         let running = service.serve(stdio).await?;
         running.waiting().await?;
         Ok(())
+    }
+
+    /// Serve MCP over Streamable HTTP, bound to `addr` (loopback by default).
+    /// Multiple MCP clients share this broker: each HTTP client negotiates
+    /// its own MCP session via the rmcp session manager, while the broker
+    /// serializes per-DB worker access across all of them.
+    pub async fn serve_http(
+        self: Arc<Self>,
+        addr: std::net::SocketAddr,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use rmcp::transport::streamable_http_server::{
+            StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+        };
+
+        let session_manager = Arc::new(LocalSessionManager::default());
+        let config = StreamableHttpServerConfig::default();
+        let broker = self.clone();
+
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .map_err(|e| format!("bind {addr}: {e}"))?;
+        eprintln!("reverse-mcp: Streamable HTTP listening on {addr}");
+        loop {
+            let (stream, _peer) = listener.accept().await?;
+            let io = hyper_util::rt::TokioIo::new(stream);
+            // StreamableHttpService is Clone and its Service impl takes &mut
+            // self, so a fresh clone per connection is enough.
+            let service = StreamableHttpService::new(
+                {
+                    let broker = Arc::clone(&broker);
+                    move || Ok(ReverseMcpServer::new(broker.clone()))
+                },
+                Arc::clone(&session_manager),
+                config.clone(),
+            );
+            tokio::spawn(async move {
+                let handler = hyper::service::service_fn(move |req| {
+                    let mut service = service.clone();
+                    async move {
+                        use tower::Service as _;
+                        service.call(req).await.map_err(std::io::Error::other)
+                    }
+                });
+                let builder = hyper_util::server::conn::auto::Builder::new(
+                    hyper_util::rt::TokioExecutor::new(),
+                );
+                let _ = builder.serve_connection_with_upgrades(io, handler).await;
+            });
+        }
     }
 }
 

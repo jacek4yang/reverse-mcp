@@ -8,6 +8,9 @@ repository.workspace = true
 [dependencies]
 rmcp = { version = "3.3.0", features = ["server", "transport-io", "transport-child-process", "transport-streamable-http-server", "client"] }
 rmcp-core = { path = "../rmcp-core", features = ["tokio-async"] }
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "service", "http1"] }
+tower = { version = "0.5", features = ["util"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -17,6 +20,10 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 rmcp-broker = { path = ".", version = "0.1.0" }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "client", "client-legacy", "http1"] }
+http-body-util = "0.1"
+bytes = "1"
 
 [features]
 default = []

@@ -19,7 +19,7 @@ use std::path::PathBuf;
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
-        Some("serve") => cmd_serve(args.get(1).map(String::as_str)).await,
+        Some("serve") => cmd_serve(args.get(1).map(String::as_str), &args).await,
         // Internal subcommand: the broker spawns `<exe> worker` per open DB.
         Some("worker") => {
             // Hidden helper: `--probe-backend <kind>` prints the kind and
@@ -80,7 +80,7 @@ async fn main() {
     std::process::exit(code);
 }
 
-async fn cmd_serve(transport: Option<&str>) -> i32 {
+async fn cmd_serve(transport: Option<&str>, args: &[String]) -> i32 {
     let config = match rmcp_core::config::Config::load() {
         Ok(c) => c,
         Err(e) => {
@@ -91,9 +91,36 @@ async fn cmd_serve(transport: Option<&str>) -> i32 {
     let broker = rmcp_broker::Broker::new(config);
 
     match transport {
+        // `serve --http 127.0.0.1:8750` or `serve http <addr>`; defaults to
+        // loopback so the server is never exposed on other interfaces.
         Some("http") | Some("--http") => {
-            eprintln!("HTTP transport lands with the hardening commit; use stdio for now");
-            2
+            let arg = args.get(2).cloned().unwrap_or_default();
+            let parsed: Result<std::net::SocketAddr, String> = if arg.is_empty() {
+                "127.0.0.1:8750"
+                    .parse()
+                    .map_err(|e| format!("bad default addr: {e}"))
+            } else if let Some(port) = arg.strip_prefix(':') {
+                format!("127.0.0.1:{port}")
+                    .parse()
+                    .map_err(|e| format!("bad port '{arg}': {e}"))
+            } else {
+                arg.parse()
+                    .map_err(|e| format!("bad bind address '{arg}': {e}"))
+            };
+            let addr = match parsed {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return 2;
+                }
+            };
+            match broker.serve_http(addr).await {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("serve http failed: {e}");
+                    1
+                }
+            }
         }
         Some(t) if t.starts_with("--") => {
             eprintln!("unknown flag '{t}'");
