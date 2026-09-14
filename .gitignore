@@ -28,9 +28,7 @@ GROK_TASK.md
 vendor/idalib-sys/sdk/
 
 # Local build/test logs
-/vb*.txt
-/vt*.txt
-/vendored_build.txt
+*.log
 
 # Fixture build artifacts
 tests/fixtures/simple.exe
