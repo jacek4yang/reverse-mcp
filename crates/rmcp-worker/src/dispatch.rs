@@ -42,6 +42,26 @@ fn ea_param(params: &Value, key: &str) -> rmcp_core::error::Result<u64> {
     }
 }
 
+/// Optimistic-concurrency guard: when the request carries
+/// `expected_revision`, it must match the DB's current revision. Only
+/// increment the revision after a confirmed successful mutation.
+fn check_revision(params: &Value, backend: &dyn IdaBackend) -> rmcp_core::error::Result<()> {
+    match params.get("expected_revision") {
+        None | Some(Value::Null) => Ok(()),
+        Some(v) => {
+            let expected = v
+                .as_u64()
+                .ok_or_else(|| Error::Worker("expected_revision must be an integer".into()))?;
+            let current = backend.revision();
+            if expected != current {
+                Err(Error::RevisionConflict { expected, current })
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
 fn dispatch(
     state: &mut WorkerState,
     method: &str,
@@ -179,6 +199,7 @@ fn dispatch(
         }
         "patch_bytes" => {
             let ea = ea_param(&params, "ea")?;
+            check_revision(&params, need_backend(state)?)?;
             let hex = params
                 .get("hex")
                 .and_then(|v| v.as_str())
@@ -196,6 +217,7 @@ fn dispatch(
         }
         "set_comment" => {
             let ea = ea_param(&params, "ea")?;
+            check_revision(&params, need_backend(state)?)?;
             let comment = params
                 .get("comment")
                 .and_then(|v| v.as_str())
@@ -209,6 +231,7 @@ fn dispatch(
         }
         "rename" => {
             let ea = ea_param(&params, "ea")?;
+            check_revision(&params, need_backend(state)?)?;
             let name = params
                 .get("name")
                 .and_then(|v| v.as_str())
@@ -223,6 +246,7 @@ fn dispatch(
         }
         "set_type" => {
             let ea = ea_param(&params, "ea")?;
+            check_revision(&params, need_backend(state)?)?;
             let decl = params
                 .get("decl")
                 .and_then(|v| v.as_str())
@@ -245,5 +269,86 @@ fn dispatch(
             Ok(out)
         }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rmcp_core::protocol::WorkerResponse;
+
+    fn mock_worker() -> WorkerState {
+        let mut state = WorkerState::new();
+        state.backend = Some(Box::new(rmcp_ida::MockBackend::new()));
+        state
+    }
+
+    fn send(state: &mut WorkerState, id: u64, method: &str, params: Value) -> WorkerResponse {
+        handle(
+            state,
+            WorkerRequest {
+                id,
+                method: method.into(),
+                params,
+            },
+        )
+    }
+
+    #[test]
+    fn stale_revision_is_rejected() {
+        let mut state = mock_worker();
+        // open + one confirmed mutation bumps the revision to 1
+        let r = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        assert!(r.error.is_none(), "open failed: {r:?}");
+        let r = send(
+            &mut state,
+            2,
+            "rename",
+            json!({"ea": "0x401100", "name": "n1"}),
+        );
+        assert!(r.error.is_none(), "rename failed: {r:?}");
+
+        // a mutation carrying the now-stale revision 0 must be rejected
+        let r = send(
+            &mut state,
+            3,
+            "rename",
+            json!({"ea": "0x401100", "name": "n2", "expected_revision": 0}),
+        );
+        let err = r.error.expect("stale mutation must fail");
+        assert_eq!(err.code, "revision_conflict");
+
+        // the DB must be untouched by the rejected mutation
+        let r = send(&mut state, 4, "revision", json!({}));
+        assert_eq!(r.result.unwrap()["revision"], 1);
+    }
+
+    #[test]
+    fn matching_revision_is_accepted() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(
+            &mut state,
+            2,
+            "set_comment",
+            json!({"ea": "0x401100", "comment": "hi", "expected_revision": 0}),
+        );
+        let out = r.result.expect("matching-revision mutation must pass");
+        assert_eq!(out["changed"], true);
+        assert_eq!(out["revision_after"], 1);
+    }
+
+    #[test]
+    fn omitted_revision_stays_allowed() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(
+            &mut state,
+            2,
+            "rename",
+            json!({"ea": "0x401100", "name": "n1"}),
+        );
+        let out = r.result.expect("omitted expected_revision must pass");
+        assert_eq!(out["revision_after"], 1);
     }
 }
