@@ -272,10 +272,11 @@ pub fn cmd_ida_list(explicit: Option<&str>) -> i32 {
         println!("no IDA installations found");
         return 1;
     }
-    println!(
+    let header = format!(
         "{:<6}  {:<10}  {:<12}  {:<24}  {:<12}  {}",
         "VER", "RUNTIME", "SOURCE", "DECOMPILERS", "BACKEND", "ROOT"
     );
+    println!("{header}");
     for inst in &installs {
         let backend = match inst.backend {
             rmcp_core::discovery::BackendStatus::Ready => "ready",

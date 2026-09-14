@@ -467,7 +467,7 @@ unsafe fn query_string_value(data: &[u8], subblock: &str) -> Option<String> {
 /// Parse "9.2.250908" / "9,2,250908,0" style strings.
 fn parse_version_string(s: &str) -> Option<Version> {
     let nums: Vec<u32> = s
-        .split(|c: char| c == '.' || c == ',' || c == ' ')
+        .split(['.', ',', ' '])
         .filter_map(|p| p.trim().parse().ok())
         .collect();
     if nums.len() >= 2 {
@@ -513,6 +513,7 @@ unsafe fn fixed_file_info_version(data: &[u8]) -> Option<Version> {
 /// 1. PE version resource of the runtime libs (Windows: `idalib.dll` carries
 ///    one, `ida.dll` typically does not)
 /// 2. directory/file name hints: "IDA Professional 9.2", "ida-pro-9.2", "IDA 9.2"
+///
 /// Returns `None` when nothing sensible can be determined (still a valid
 /// candidate — the worker re-checks at runtime).
 fn detect_version(root: &Path, source_hint: Option<&str>) -> Option<Version> {
@@ -723,7 +724,7 @@ pub fn discover_all(explicit: Option<&Path>) -> Vec<IdaInstallation> {
     }
 
     // Sort: highest version first within equal readiness.
-    out.sort_by(|a, b| b.version.cmp(&a.version));
+    out.sort_by_key(|i| std::cmp::Reverse(i.version));
     out
 }
 
@@ -732,8 +733,8 @@ fn ancestors(p: &Path) -> impl Iterator<Item = PathBuf> {
 }
 
 /// 3. `ida-config.json` — Hex-Rays ships a config in the user profile that
-/// records the last-used install; the JSON sits in the config dir, and the
-/// install dir is usually the parent of the referenced idalib.
+///    records the last-used install; the JSON sits in the config dir, and the
+///    install dir is usually the parent of the referenced idalib.
 fn ida_config_dirs() -> Vec<PathBuf> {
     let mut out = Vec::new();
     let cfg_dirs: Vec<PathBuf> = if cfg!(windows) {
@@ -770,10 +771,10 @@ fn ida_config_dirs() -> Vec<PathBuf> {
         }
         // Even without the key, the config dir's parent hints at an install
         // (e.g. portable installs keep both together) — cheap to check.
-        if let Some(parent) = dir.parent() {
-            if is_valid_ida_dir(parent) {
-                out.push(parent.to_path_buf());
-            }
+        if let Some(parent) = dir.parent()
+            && is_valid_ida_dir(parent)
+        {
+            out.push(parent.to_path_buf());
         }
     }
     out
@@ -796,15 +797,14 @@ fn os_native_candidates() -> Vec<(PathBuf, Option<String>)> {
     // App Paths registration (IDA registers ida.exe there on some setups).
     use winreg::RegKey;
     use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
-    for hive_path in [r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\ida.exe"] {
-        let hk = RegKey::predef(HKEY_LOCAL_MACHINE);
-        if let Ok(key) = hk.open_subkey_with_flags(hive_path, KEY_READ)
-            && let Ok(val) = key.get_value::<String, _>("")
-        {
-            let exe = PathBuf::from(val);
-            if let Some(dir) = exe.parent() {
-                out.push((dir.to_path_buf(), None));
-            }
+    let hive_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\ida.exe";
+    let hk = RegKey::predef(HKEY_LOCAL_MACHINE);
+    if let Ok(key) = hk.open_subkey_with_flags(hive_path, KEY_READ)
+        && let Ok(val) = key.get_value::<String, _>("")
+    {
+        let exe = PathBuf::from(val);
+        if let Some(dir) = exe.parent() {
+            out.push((dir.to_path_buf(), None));
         }
     }
     out
@@ -890,7 +890,7 @@ fn parse_desktop_exec(path: &Path) -> Option<String> {
 }
 
 /// 6. `ida.reg` hint files — low priority; a user may drop an `ida.reg`
-/// next to (or inside) an install dir to make it discoverable explicitly.
+///    next to (or inside) an install dir to make it discoverable explicitly.
 fn reg_hint_candidates() -> Vec<PathBuf> {
     let mut out = Vec::new();
     // exe-relative and CWD hints: <dir>/ida.reg containing "Root=path".
