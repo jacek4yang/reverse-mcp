@@ -152,45 +152,52 @@ impl WorkerPool {
         }
         let worker_exe = self.ensure_worker_exe()?;
         // Resolve the IDA install (multi-version aware; discovery may hit
-        // the drive scan). An explicitly configured dir wins.
-        let requirement = rmcp_core::discovery::IdaRequirement::parse(ida_version)?;
-        let explicit = self.ida_dir.clone();
-        let install = if let Some(d) = explicit.as_deref() {
-            rmcp_core::discovery::resolve_with(Some(d), &requirement)?
+        // the drive scan). An explicitly configured dir wins. A mock backend
+        // needs no IDA at all — skip discovery so CI / IDA-less machines work.
+        let (ida_dir, backend_kind) = if backend_kind == "mock" {
+            (None, backend_kind.to_string())
         } else {
-            rmcp_core::discovery::resolve(&requirement)?
-        };
-        let ida_dir = install.root.clone();
-        // The worker must run a backend matching this install version.
-        let backend_kind = if backend_kind == "idalib" && !install.backend_ready() {
-            return Err(Error::CapabilityUnavailable {
-                capability: "idalib".into(),
-                reason: format!(
-                    "IDA {} is installed but no verified backend ships for it (only 9.2); pick another version or upgrade reverse-mcp",
-                    install.version
-                ),
-            });
-        } else if backend_kind == "auto" {
-            // auto = real backend when (a) this install is backend-ready and
-            // (b) the worker binary actually ships the idalib feature; mock
-            // otherwise. The idalib capability probe runs at worker side, so
-            // auto tolerates a mock-only worker.
-            if install.backend_ready() && self.worker_has_idalib_feature() {
-                "idalib"
+            let requirement = rmcp_core::discovery::IdaRequirement::parse(ida_version)?;
+            let explicit = self.ida_dir.clone();
+            let install = if let Some(d) = explicit.as_deref() {
+                rmcp_core::discovery::resolve_with(Some(d), &requirement)?
             } else {
-                "mock"
-            }
-        } else {
-            backend_kind
+                rmcp_core::discovery::resolve(&requirement)?
+            };
+            let dir = install.root.clone();
+            // The worker must run a backend matching this install version.
+            let kind = if backend_kind == "idalib" && !install.backend_ready() {
+                return Err(Error::CapabilityUnavailable {
+                    capability: "idalib".into(),
+                    reason: format!(
+                        "IDA {} is installed but no verified backend ships for it (only 9.2); pick another version or upgrade reverse-mcp",
+                        install.version
+                    ),
+                });
+            } else if backend_kind == "auto" {
+                // auto = real backend when (a) this install is backend-ready
+                // and (b) the worker binary actually ships the idalib feature;
+                // mock otherwise (probed at worker side).
+                if install.backend_ready() && self.worker_has_idalib_feature() {
+                    "idalib".to_string()
+                } else {
+                    "mock".to_string()
+                }
+            } else {
+                backend_kind.to_string()
+            };
+            (Some(dir), kind)
         };
         let plugins_dir = rmcp_core::layout::plugins_dir();
 
         let mut cmd = Command::new(&worker_exe);
-        cmd.env("REVERSE_MCP_IDA_DIR", &ida_dir);
-        // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
-        // the loader resolves them without a system-wide PATH entry.
-        let path = std::env::var("PATH").unwrap_or_default();
-        cmd.env("PATH", format!("{};{}", ida_dir.display(), path));
+        if let Some(dir) = &ida_dir {
+            cmd.env("REVERSE_MCP_IDA_DIR", dir);
+            // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
+            // the loader resolves them without a system-wide PATH entry.
+            let path = std::env::var("PATH").unwrap_or_default();
+            cmd.env("PATH", format!("{};{}", dir.display(), path));
+        }
         // Portable plugins: IDAUSR points at the exe-relative plugins dir so
         // plugins come only from reverse-mcp's layout, never the IDA install
         // dir or %APPDATA%\.idapro.
