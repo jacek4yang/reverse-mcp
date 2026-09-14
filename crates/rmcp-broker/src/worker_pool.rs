@@ -138,7 +138,11 @@ impl WorkerPool {
         }
         for c in candidates {
             // A valid worker exe answers the mock probe with exit 0.
-            let probed = std::process::Command::new(&c)
+            // An idalib-feature exe links ida.dll at load time, so probe with
+            // the IDA dir (same resolution as spawn) on PATH or the loader
+            // kills the process with STATUS_DLL_NOT_FOUND.
+            let probed = self
+                .probe_command(&c)
                 .args(["worker", "--probe-backend", "mock"])
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -155,6 +159,24 @@ impl WorkerPool {
 
     pub fn set_ida_dir(&mut self, dir: PathBuf) {
         self.ida_dir = Some(dir);
+    }
+
+    /// A command for probing the worker exe, with the IDA dir on PATH when
+    /// known (or REVERSE_MCP_IDA_DIR set). Probing without it fails for an
+    /// idalib-feature exe: ida.dll is a load-time import, so the loader
+    /// aborts with STATUS_DLL_NOT_FOUND before main() runs.
+    fn probe_command(&self, exe: &PathBuf) -> std::process::Command {
+        let mut cmd = std::process::Command::new(exe);
+        let ida_dir = self
+            .ida_dir
+            .clone()
+            .or_else(|| std::env::var("IDADIR").ok().map(PathBuf::from));
+        if let Some(dir) = ida_dir {
+            cmd.env("REVERSE_MCP_IDA_DIR", &dir);
+            let path = std::env::var("PATH").unwrap_or_default();
+            cmd.env("PATH", format!("{};{}", dir.display(), path));
+        }
+        cmd
     }
 
     pub async fn session(&self, db: &str) -> Option<Arc<Mutex<WorkerSession>>> {
@@ -336,7 +358,8 @@ impl WorkerPool {
             .worker_exe
             .as_ref()
             .and_then(|exe| {
-                let out = std::process::Command::new(exe)
+                let out = self
+                    .probe_command(exe)
                     .args(["worker", "--probe-backend", "idalib"])
                     .output()
                     .ok()?;
