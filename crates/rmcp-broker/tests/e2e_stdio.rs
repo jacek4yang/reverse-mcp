@@ -49,15 +49,16 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 15, "expected 15 tools, got {names:?}");
+    assert_eq!(names.len(), 16, "expected 16 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
+    assert!(names.contains(&"ida_segments".to_string()));
 
-    // open db (mock backend)
+    // open db (mock backend explicitly; default is idalib)
     let resp = client
         .call_tool(
             CallToolRequestParams::new("ida_db").with_arguments(
-                json!({"action": "open", "path": "fixture.i64"})
+                json!({"action": "open", "path": "fixture.i64", "backend": "mock"})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -120,7 +121,7 @@ async fn e2e_stdio_mock_wired() {
     let _ = client
         .call_tool(
             CallToolRequestParams::new("ida_db").with_arguments(
-                json!({"action": "open", "path": "fixture2.i64"})
+                json!({"action": "open", "path": "fixture2.i64", "backend": "mock"})
                     .as_object()
                     .unwrap()
                     .clone(),

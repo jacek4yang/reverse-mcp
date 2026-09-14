@@ -93,6 +93,11 @@ fn defs() -> Vec<ToolDef> {
             description: "Access spilled large results: action=read/metadata/find/release on r-handles.",
             schema: json!({"type": "object", "properties": {"action": {"type": "string", "enum": ["read", "metadata", "find", "release"]}, "handle": {"type": "string"}, "text": {"type": "string"}}}),
         },
+        ToolDef {
+            name: "ida_segments",
+            description: "List segments: name, start/end address, permissions.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}}}),
+        },
     ]
 }
 
@@ -120,6 +125,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_analysis" => tools::tool_analysis(broker, args).await,
         "ida_batch" => tools::tool_batch(broker, args).await,
         "ida_result" => tools::tool_result(broker, args).await,
+        "ida_segments" => tools::tool_segments(broker, args).await,
         other => Err(rmcp::ErrorData::invalid_params(
             format!("unknown tool '{other}'"),
             None,

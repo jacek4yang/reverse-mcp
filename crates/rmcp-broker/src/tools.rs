@@ -43,8 +43,9 @@ pub async fn tool_db(broker: &Broker, args: Value) -> Result<Value, McpError> {
             let path = arg_str(&args, "path")
                 .ok_or_else(|| mcp_code("invalid_args", "open requires 'path'"))?;
             let mut pool = broker.pool.lock().await;
-            // Route through worker: backend kind depends on build (mock default).
-            let backend_kind = arg_str(&args, "backend").unwrap_or("mock");
+            // Real backend by default; "mock" stays available for tests and
+            // IDA-less smoke runs.
+            let backend_kind = arg_str(&args, "backend").unwrap_or("idalib");
             let handle = pool
                 .spawn_for(path, broker.config.max_workers, backend_kind)
                 .await
