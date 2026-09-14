@@ -1,0 +1,25 @@
+# Build
+/target
+Cargo.lock.bak
+
+# Proprietary IDA material — never commit
+*.7z
+*.i64
+*.idb
+*.hexlic
+ida.dll*
+ida32.dll
+idalib.dll
+idalib32.dll
+hex*.dll
+idacli
+IDA_Professional/
+ida-pro-*/
+
+# Task files
+GROK_TASK.md
+
+# Runtime artifacts (portable layout, exe-relative)
+/cache/
+/sessions/
+*.log
