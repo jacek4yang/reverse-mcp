@@ -14,3 +14,12 @@ tracing.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+
+[features]
+default = []
+tokio-async = ["dep:tokio"]
+
+[dependencies.tokio]
+version = "1"
+features = ["io-util"]
+optional = true

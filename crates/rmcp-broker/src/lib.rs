@@ -1,3 +1,192 @@
-//! Broker: session manager, worker supervision, MCP server.
+//! Broker: manages worker processes and exposes the MCP server.
 //!
-//! Currently a scaffold; the rmcp ServerHandler lands in commit 4.
+//! Tool call flow: MCP tool args → broker validates (db handle resolution,
+//! expected_revision) → worker request → response → bounded output through
+//! the result store.
+
+use std::sync::Arc;
+
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
+    ListToolsResult, ServerCapabilities, ServerInfo,
+};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::{ErrorData as McpError, ServerHandler};
+use serde_json::{Value, json};
+use tokio::sync::Mutex;
+
+use rmcp_core::config::Config;
+use rmcp_core::result_store::ResultStore;
+
+mod registry;
+pub mod tools;
+pub mod worker_pool;
+
+pub use worker_pool::WorkerPool;
+
+// ---------------------------------------------------------------------------
+// Shared helpers used by tools.rs
+// ---------------------------------------------------------------------------
+
+/// Resolve db param or fail when ambiguous.
+pub async fn resolve_db(
+    broker: &Broker,
+    db: Option<&str>,
+) -> Result<(String, Arc<Mutex<worker_pool::WorkerSession>>), McpError> {
+    let open = broker.open_dbs.lock().await.clone();
+    match (db, open.len()) {
+        (Some(h), _) => {
+            let session = broker.pool.lock().await.session(h).await.ok_or_else(|| {
+                mcp_code(
+                    "unknown_db",
+                    &format!("db handle '{h}' is unknown or closed"),
+                )
+            })?;
+            Ok((h.to_string(), session))
+        }
+        (None, 1) => {
+            let (h, _) = &open[0];
+            let session = broker
+                .pool
+                .lock()
+                .await
+                .session(h)
+                .await
+                .ok_or_else(|| mcp_code("unknown_db", "session gone"))?;
+            Ok((h.clone(), session))
+        }
+        (None, 0) => Err(mcp_code(
+            "unknown_db",
+            "no db open; call ida_db(action=open) first",
+        )),
+        (None, n) => {
+            let candidates = open
+                .iter()
+                .map(|(h, _)| h.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(mcp_code(
+                "db_ambiguous",
+                &format!("db handle omitted and {n} DBs are open; specify one of: {candidates}"),
+            ))
+        }
+    }
+}
+
+pub fn mcp_code(code: &str, message: &str) -> McpError {
+    McpError::invalid_params(format!("[{code}] {message}"), None)
+}
+
+/// Compact a result through the store: inline JSON or handle+preview.
+pub fn bound_output(broker: &Broker, tool: &str, payload: Value) -> Value {
+    let (handle, preview, spilled) =
+        broker
+            .store
+            .put(tool, payload.clone(), broker.config.result_threshold);
+    if !spilled {
+        return payload;
+    }
+    json!({
+        "result_ref": handle,
+        "preview": preview,
+        "hint": "payload exceeded output budget; read it with ida_result(handle)",
+    })
+}
+
+pub fn arg_str<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
+    args.get(name).and_then(|v| v.as_str())
+}
+
+pub fn arg_u64(args: &Value, name: &str, default: u64) -> u64 {
+    args.get(name).and_then(|v| v.as_u64()).unwrap_or(default)
+}
+
+/// Shared broker state.
+pub struct Broker {
+    pub config: Config,
+    pub store: ResultStore,
+    pub pool: Mutex<WorkerPool>,
+    /// db handle string -> opened path (for sessions listing).
+    pub open_dbs: Mutex<Vec<(String, String)>>,
+}
+
+impl Broker {
+    pub fn new(config: Config) -> Arc<Self> {
+        let ttl = config.result_ttl;
+        Arc::new(Self {
+            store: ResultStore::new(ttl),
+            config,
+            pool: Mutex::new(WorkerPool::new()),
+            open_dbs: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// Serve MCP over stdio. Returns when stdin closes.
+    pub async fn serve_stdio(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error>> {
+        use rmcp::ServiceExt;
+        let service = ReverseMcpServer::new(self.clone());
+        let stdio = rmcp::transport::stdio();
+        let running = service.serve(stdio).await?;
+        running.waiting().await?;
+        Ok(())
+    }
+}
+
+/// rmcp ServerHandler implementation.
+pub struct ReverseMcpServer {
+    pub broker: Arc<Broker>,
+}
+
+impl ReverseMcpServer {
+    pub fn new(broker: Arc<Broker>) -> Self {
+        Self { broker }
+    }
+}
+
+impl ServerHandler for ReverseMcpServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::from_build_env())
+            .with_instructions(
+                "Reverse engineering over IDA Pro. Open a database with ida_db(action=open) \
+                 first; use the returned db handle (db1, db2, ...) on every other tool. \
+                 Large outputs spill to result handles (r1, ...) — read them with ida_result.",
+            )
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        Ok(ListToolsResult::with_all_items(registry::tool_list()))
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        let args = Value::Object(request.arguments.clone().unwrap_or_default());
+        let structured = registry::call(&self.broker, request.name.as_ref(), args).await;
+        match structured {
+            Ok(v) => {
+                let text = serde_json::to_string_pretty(&v).unwrap_or_else(|_| "{}".to_string());
+                Ok(Into::into(CallToolResult::success(vec![
+                    ContentBlock::text(text),
+                ])))
+            }
+            Err(e) => {
+                // Tool-level error: reached the tool, execution failed. The
+                // stable code stays visible to the agent in the content.
+                let text = serde_json::to_string_pretty(&serde_json::json!({
+                    "error": {"code": e.code, "message": e.message},
+                }))
+                .unwrap_or_default();
+                Ok(Into::into(CallToolResult::error(vec![ContentBlock::text(
+                    text,
+                )])))
+            }
+        }
+    }
+}
