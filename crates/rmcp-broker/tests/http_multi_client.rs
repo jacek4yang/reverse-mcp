@@ -110,14 +110,14 @@ async fn two_http_clients_share_broker() {
     let sid2 = session_id(&headers).expect("session id from client 2");
     assert_ne!(sid1, sid2, "each client must negotiate its own session");
 
-    // Client 1 opens a DB (mock backend).
+    // Client 1 opens a DB (mock backend; CI has no IDA).
     let (status, _, body) = post(
         addr,
         Some(&sid1),
         call_request(
             2,
             "ida_db",
-            serde_json::json!({"action": "open", "path": "http-it.i64"}),
+            serde_json::json!({"action": "open", "path": "http-it.i64", "backend": "mock"}),
         ),
     )
     .await

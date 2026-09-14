@@ -194,8 +194,12 @@ impl WorkerPool {
         // Resolve the IDA install (multi-version aware; discovery may hit
         // the drive scan). An explicitly configured dir wins. A mock backend
         // needs no IDA at all — skip discovery so CI / IDA-less machines work.
-        let (ida_dir, backend_kind) = if backend_kind == "mock" {
-            (None, backend_kind.to_string())
+        // `auto` likewise skips discovery when this exe ships no idalib
+        // feature: the mock fallback is then the only possible outcome.
+        let skip_discovery =
+            backend_kind == "mock" || (backend_kind == "auto" && !self.worker_has_idalib_feature());
+        let (ida_dir, backend_kind) = if skip_discovery {
+            (None, "mock".to_string())
         } else {
             let requirement = rmcp_core::discovery::IdaRequirement::parse(ida_version)?;
             let explicit = self.ida_dir.clone();
