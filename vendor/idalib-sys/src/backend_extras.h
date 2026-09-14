@@ -17,9 +17,10 @@ inline bool idalib_save_database() {
   return save_database(nullptr, -1, nullptr, nullptr);
 }
 
-// Rename the item at `ea`. Thin wrapper over set_name with SN_CHECK.
+// Rename the item at `ea`. SN_CHECK fails on invalid/duplicate names; use
+// SN_FORCE so a rename always succeeds and uniquifies on collision.
 inline bool idalib_set_name(ea_t ea, const char *name) {
-  return set_name(ea, name, SN_CHECK);
+  return set_name(ea, name, SN_CHECK | SN_FORCE | SN_NODUMMY);
 }
 
 // Generate one cleaned line of disassembly at `ea` (tags removed).
