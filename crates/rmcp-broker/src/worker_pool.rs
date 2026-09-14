@@ -272,7 +272,8 @@ impl WorkerPool {
         detected
     }
 
-    pub async fn close(&mut self, db: &str) -> Result<()> {        let idx = self
+    pub async fn close(&mut self, db: &str) -> Result<()> {
+        let idx = self
             .sessions
             .iter()
             .position(|(h, _)| h == db)

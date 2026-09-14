@@ -16,8 +16,11 @@ async fn main() {
         Some("open") => cli::cmd_open(args.get(1).map(String::as_str).unwrap_or("")).await,
         Some("sessions") => cli::cmd_sessions().await,
         Some("inspect") => {
-            cli::cmd_inspect(args.get(1).map(String::as_str), args.get(2).map(String::as_str))
-                .await
+            cli::cmd_inspect(
+                args.get(1).map(String::as_str),
+                args.get(2).map(String::as_str),
+            )
+            .await
         }
         Some("decompile") => {
             cli::cmd_decompile(

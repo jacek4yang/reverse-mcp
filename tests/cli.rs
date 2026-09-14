@@ -14,7 +14,10 @@ fn version_prints_and_exits_zero() {
     let out = cli().args(["version"]).output().expect("run version");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains(env!("CARGO_PKG_VERSION")), "stdout: {stdout}");
+    assert!(
+        stdout.contains(env!("CARGO_PKG_VERSION")),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]

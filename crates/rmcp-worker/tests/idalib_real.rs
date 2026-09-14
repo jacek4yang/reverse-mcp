@@ -30,9 +30,7 @@ impl WorkerProc {
             let path = std::env::var("PATH").unwrap_or_default();
             cmd.env("PATH", format!("{ida_dir};{path}"));
         }
-        let mut child = cmd
-            .spawn()
-            .expect("spawn worker");
+        let mut child = cmd.spawn().expect("spawn worker");
         let stdout = child.stdout.take().expect("worker stdout");
         let mut w = WorkerProc {
             child,
@@ -106,17 +104,20 @@ fn real_ida_full_chain() {
     assert_eq!(r["backend"], "idalib");
 
     // 1. open (creates a new IDB for the binary, runs auto-analysis)
-    let r = w.call(
-        "db.open",
-        json!({"path": dst}),
+    let r = w.call("db.open", json!({"path": dst}));
+    assert!(
+        r.get("function_count").is_some() || r.get("path").is_some(),
+        "open info: {r}"
     );
-    assert!(r.get("function_count").is_some() || r.get("path").is_some(), "open info: {r}");
 
     // 2. analyze wait
     let r = w.call("analyze_wait", json!({}));
     assert_eq!(r["analyzed"], true);
     let fn_count = r["functions"].as_u64().expect("function count");
-    assert!(fn_count >= 5, "expected at least 5 functions, got {fn_count}");
+    assert!(
+        fn_count >= 5,
+        "expected at least 5 functions, got {fn_count}"
+    );
 
     // 3. functions list contains our named functions
     let fns = w.call("functions", json!({"offset": 0, "limit": 500}));
@@ -136,12 +137,12 @@ fn real_ida_full_chain() {
     let helper_ea = helper["ea_start"].as_u64().expect("helper ea");
 
     // 4. instruction decode at helper
-    let insns = w.call(
-        "disassemble",
-        json!({"ea": helper_ea, "max_insns": 8}),
-    );
+    let insns = w.call("disassemble", json!({"ea": helper_ea, "max_insns": 8}));
     let iarr = insns.as_array().expect("insns array");
-    assert!(!iarr.is_empty(), "no instructions decoded at {helper_ea:#x}");
+    assert!(
+        !iarr.is_empty(),
+        "no instructions decoded at {helper_ea:#x}"
+    );
     assert!(iarr[0]["text"].as_str().is_some_and(|t| !t.is_empty()));
 
     // 5. xrefs: main calls helper
@@ -156,16 +157,25 @@ fn real_ida_full_chain() {
     let found_usage = sarr
         .iter()
         .any(|s| s["value"].as_str().is_some_and(|v| v.contains("usage")));
-    assert!(found_usage, "usage string not found in {} strings", sarr.len());
+    assert!(
+        found_usage,
+        "usage string not found in {} strings",
+        sarr.len()
+    );
 
     // 7. Hex-Rays decompile of helper
     let dec = w.call("decompile", json!({"ea": helper_ea}));
     let pseudo = dec["pseudocode"].as_str().expect("pseudocode");
-    assert!(pseudo.contains("helper") || pseudo.contains("a + b") || pseudo.contains("return"),
-        "unexpected pseudocode: {pseudo}");
+    assert!(
+        pseudo.contains("helper") || pseudo.contains("a + b") || pseudo.contains("return"),
+        "unexpected pseudocode: {pseudo}"
+    );
 
     // 8. rename + comment
-    let ren = w.call("rename", json!({"ea": helper_ea, "name": "helper_renamed_it"}));
+    let ren = w.call(
+        "rename",
+        json!({"ea": helper_ea, "name": "helper_renamed_it"}),
+    );
     assert_eq!(ren["changed"], true);
     let cmt = w.call(
         "set_comment",

@@ -580,12 +580,24 @@ mod layout_tests {
     use super::*;
     #[test]
     fn sizes() {
-        println!("cexpr={} cinsn={} citem={} cfunc={} cswitch={} ctry={} cthrow={} lvar={} lvar_loc={} vdloc={} argloc={} tinfo={} range={} op={} insn={} qstring={}",
-            std::mem::size_of::<cexpr_t>(), std::mem::size_of::<cinsn_t>(), std::mem::size_of::<citem_t>(),
-            std::mem::size_of::<cfunc_t>(), std::mem::size_of::<cswitch_t>(), std::mem::size_of::<ctry_t>(),
-            std::mem::size_of::<cthrow_t>(), std::mem::size_of::<lvar_t>(), std::mem::size_of::<lvar_locator_t>(),
-            std::mem::size_of::<vdloc_t>(), std::mem::size_of::<argloc_t>(), std::mem::size_of::<tinfo_t>(),
-            std::mem::size_of::<range_t>(), std::mem::size_of::<op_t>(), std::mem::size_of::<insn_t>(),
-            std::mem::size_of::<qstring>());
+        println!(
+            "cexpr={} cinsn={} citem={} cfunc={} cswitch={} ctry={} cthrow={} lvar={} lvar_loc={} vdloc={} argloc={} tinfo={} range={} op={} insn={} qstring={}",
+            std::mem::size_of::<cexpr_t>(),
+            std::mem::size_of::<cinsn_t>(),
+            std::mem::size_of::<citem_t>(),
+            std::mem::size_of::<cfunc_t>(),
+            std::mem::size_of::<cswitch_t>(),
+            std::mem::size_of::<ctry_t>(),
+            std::mem::size_of::<cthrow_t>(),
+            std::mem::size_of::<lvar_t>(),
+            std::mem::size_of::<lvar_locator_t>(),
+            std::mem::size_of::<vdloc_t>(),
+            std::mem::size_of::<argloc_t>(),
+            std::mem::size_of::<tinfo_t>(),
+            std::mem::size_of::<range_t>(),
+            std::mem::size_of::<op_t>(),
+            std::mem::size_of::<insn_t>(),
+            std::mem::size_of::<qstring>()
+        );
     }
 }

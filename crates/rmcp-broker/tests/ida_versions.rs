@@ -3,14 +3,17 @@
 //! `ida_version` requirements — exact match, ranges, and refusal to
 //! silently fall back when no installed version satisfies the requirement.
 
-use rmcp_core::discovery::{discover_all, resolve, IdaRequirement};
+use rmcp_core::discovery::{IdaRequirement, discover_all, resolve};
 
 #[test]
 #[ignore] // run explicitly: cargo test -p rmcp-broker --features idalib -- --ignored
 fn version_selection_flow() {
     // 0. There must be at least one discovered install (IDADIR or scan).
     let all = discover_all(None);
-    assert!(!all.is_empty(), "no IDA installs discovered on this machine");
+    assert!(
+        !all.is_empty(),
+        "no IDA installs discovered on this machine"
+    );
 
     // 1. "latest" resolves to the highest-version, backend-ready install.
     let latest = resolve(&IdaRequirement::parse("latest").unwrap())
@@ -21,7 +24,10 @@ fn version_selection_flow() {
         .map(|i| i.version)
         .max()
         .expect("at least one backend-ready install");
-    assert_eq!(latest.version, max_version, "latest must pick highest ready");
+    assert_eq!(
+        latest.version, max_version,
+        "latest must pick highest ready"
+    );
 
     // 2. Exact version of the ready install resolves to it.
     let key = latest.version.to_string();
