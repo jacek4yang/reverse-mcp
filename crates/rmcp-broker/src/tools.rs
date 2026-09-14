@@ -198,18 +198,34 @@ pub async fn tool_xrefs(broker: &Broker, args: Value) -> Result<Value, McpError>
     Ok(json!({"db": db, "direction": dir, "xrefs": bound_output(broker, "ida_xrefs", out)}))
 }
 
-/// ida_graph — call graph around a function.
+/// ida_graph — call graph or CFG around a function.
 pub async fn tool_graph(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let ea = args
         .get("ea")
         .and_then(parse_ea)
         .ok_or_else(|| mcp_code("invalid_args", "graph requires 'ea'"))?;
+    let kind = match arg_str(&args, "kind").unwrap_or("calls") {
+        "calls" => "calls",
+        "cfg" => "cfg",
+        other => {
+            return Err(mcp_code(
+                "invalid_args",
+                &format!("unknown graph kind '{other}' (calls|cfg)"),
+            ));
+        }
+    };
     let s = session.lock().await;
     let out = s
         .call(
             "graph",
-            json!({"ea": ea, "depth": arg_u64(&args, "depth", 1).min(5)}),
+            json!({
+                "ea": ea,
+                "kind": kind,
+                "depth": arg_u64(&args, "depth", 1).min(5),
+                "max_nodes": arg_u64(&args, "max_nodes", 200).min(5000),
+                "max_edges": arg_u64(&args, "max_edges", 400).min(10000),
+            }),
         )
         .await
         .map_err(err_from)?;

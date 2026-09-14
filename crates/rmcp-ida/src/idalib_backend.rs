@@ -13,8 +13,8 @@ use idalib::idb::{IDB, IDBOpenOptions};
 use idalib::xref::XRefQuery;
 
 use rmcp_core::backend::{
-    Capabilities, FunctionInfo, IdaBackend, InsnInfo, MutationOutcome, SegmentInfo, StringInfo,
-    XrefInfo,
+    Capabilities, FunctionInfo, GraphParams, IdaBackend, InsnInfo, MutationOutcome, SegmentInfo,
+    StringInfo, XrefInfo,
 };
 use rmcp_core::error::{Error, Result};
 
@@ -292,25 +292,185 @@ impl IdaBackend for IdaLibBackend {
         }))
     }
 
-    fn graph(&self, ea: u64, depth: u32) -> Result<Value> {
+    fn graph(&self, ea: u64, params: &GraphParams) -> Result<Value> {
         let idb = self.idb()?;
-        let f = idb
+        let root = idb
             .function_at(ea)
             .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
-        let start = f.start_address();
-        let name = f.name().unwrap_or_default();
-        let mut nodes = vec![json!({"ea": start, "name": name})];
-        let mut edges = Vec::new();
-        if depth >= 1 {
-            let callees: Vec<u64> = self.xrefs_from(start)?.into_iter().map(|x| x.to).collect();
-            for to in callees {
-                if let Ok(callee) = self.function_at(to) {
-                    nodes.push(json!({"ea": callee.ea_start, "name": callee.name}));
-                    edges.push(json!({"from": start, "to": callee.ea_start}));
+
+        let mut nodes: Vec<Value> = Vec::new();
+        let mut edges: Vec<Value> = Vec::new();
+        let mut seen_nodes = std::collections::HashSet::new();
+        let mut seen_edges = std::collections::HashSet::new();
+        let mut truncated = false;
+
+        let add_node = |ea: u64,
+                        name: String,
+                        nodes: &mut Vec<Value>,
+                        seen: &mut std::collections::HashSet<u64>|
+         -> bool {
+            if seen.insert(ea) {
+                if nodes.len() >= params.max_nodes {
+                    return false;
+                }
+                nodes.push(json!({"ea": ea, "name": name}));
+            }
+            true
+        };
+
+        // Breadth-first traversal over `calls` edges (function-wide call
+        // discovery) or `cfg` edges (basic-block flow inside the function).
+        let mut frontier = vec![root.start_address()];
+        add_node(
+            root.start_address(),
+            root.name().unwrap_or_default(),
+            &mut nodes,
+            &mut seen_nodes,
+        );
+
+        let mut depth = 0u32;
+        while !frontier.is_empty() && depth < params.depth {
+            depth += 1;
+            let mut next = Vec::new();
+            for f_ea in std::mem::take(&mut frontier) {
+                let f = match idb.function_at(f_ea) {
+                    Some(f) => f,
+                    None => continue,
+                };
+
+                match params.kind.as_str() {
+                    "cfg" => {
+                        // Basic-block flow chart of this function.
+                        let cfg = match f.cfg() {
+                            Ok(c) => c,
+                            Err(_) => continue,
+                        };
+                        let mut id_by_start: std::collections::HashMap<u64, ()> =
+                            std::collections::HashMap::new();
+                        let blocks: Vec<_> = cfg.blocks().collect();
+                        for b in &blocks {
+                            if nodes.len() >= params.max_nodes {
+                                truncated = true;
+                                break;
+                            }
+                            if add_node(
+                                b.start_address(),
+                                format!("bb_{:x}", b.start_address()),
+                                &mut nodes,
+                                &mut seen_nodes,
+                            ) {
+                                id_by_start.insert(b.start_address(), ());
+                            }
+                        }
+                        // CFG edges: fall through / branch to next block in
+                        // order; use succs() where the block exposes them.
+                        for b in &blocks {
+                            if edges.len() >= params.max_edges {
+                                truncated = true;
+                                break;
+                            }
+                            let from = b.start_address();
+                            let succs: Vec<u64> = b
+                                .succs()
+                                .filter_map(|id| blocks.get(id).map(|s| s.start_address()))
+                                .collect();
+                            if succs.is_empty() {
+                                // fallthrough to next block if any
+                                if let Some(next_b) =
+                                    blocks.iter().find(|n| n.start_address() >= b.end_address())
+                                {
+                                    let to = next_b.start_address();
+                                    if seen_edges.insert((from, to)) {
+                                        edges.push(json!({"from": from, "to": to}));
+                                    }
+                                }
+                            } else {
+                                for to in succs {
+                                    if seen_edges.insert((from, to)) {
+                                        edges.push(json!({"from": from, "to": to}));
+                                    }
+                                }
+                            }
+                        }
+                        let _ = &id_by_start;
+                    }
+                    _ => {
+                        // calls: walk every instruction in the function's
+                        // range, collecting call/jump targets (function-wide
+                        // call discovery, not just xrefs from entry).
+                        let mut callees: Vec<u64> = Vec::new();
+                        let mut cur = f.start_address();
+                        while cur < f.end_address() {
+                            let Some(insn) = idb.insn_at(cur) else { break };
+                            if insn.is_call() {
+                                for i in 0..insn.operand_count() {
+                                    if let Some(op) = insn.operand(i) {
+                                        if let Some(target) = op.addr() {
+                                            callees.push(target);
+                                        }
+                                    }
+                                }
+                                // also code xrefs from the call site
+                                if let Some(x) = idb.first_xref_from(cur, XRefQuery::ALL) {
+                                    let mut x = Some(x);
+                                    while let Some(xr) = x {
+                                        if xr.is_code() {
+                                            callees.push(xr.to());
+                                        }
+                                        x = xr.next_from();
+                                    }
+                                }
+                            }
+                            cur += insn.len() as u64;
+                        }
+
+                        for to in callees {
+                            if edges.len() >= params.max_edges {
+                                truncated = true;
+                                break;
+                            }
+                            // resolve callee to containing function
+                            let callee = idb.function_at(to);
+                            let (callee_ea, callee_name) = match &callee {
+                                Some(c) => (c.start_address(), c.name().unwrap_or_default()),
+                                None => (to, String::new()),
+                            };
+                            if !seen_edges.insert((f_ea, callee_ea)) {
+                                continue;
+                            }
+                            if nodes.len() >= params.max_nodes {
+                                truncated = true;
+                                break;
+                            }
+                            add_node(callee_ea, callee_name, &mut nodes, &mut seen_nodes);
+                            edges.push(json!({"from": f_ea, "to": callee_ea, "callsite": to}));
+                            if depth < params.depth {
+                                next.push(callee_ea);
+                            }
+                        }
+                    }
+                }
+                if edges.len() >= params.max_edges || nodes.len() >= params.max_nodes {
+                    truncated = true;
+                    break;
                 }
             }
+            if truncated {
+                break;
+            }
+            frontier = next;
         }
-        Ok(json!({"root": start, "nodes": nodes, "edges": edges}))
+
+        let mut out = json!({
+            "kind": params.kind,
+            "root": root.start_address(),
+            "nodes": nodes,
+            "edges": edges,
+        });
+        if truncated {
+            out["truncated"] = json!(true);
+        }
+        Ok(out)
     }
 
     fn search_text(&self, needle: &str, limit: usize) -> Result<Vec<Value>> {

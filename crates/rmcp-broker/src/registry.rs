@@ -55,8 +55,8 @@ fn defs() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "ida_graph",
-            description: "Call graph around the function at ea, bounded depth.",
-            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "ea": {"type": "string"}, "depth": {"type": "integer", "maximum": 5}}, "required": ["ea"]}),
+            description: "Graph around the function at ea. kind=calls (function-wide call discovery, multi-level) or kind=cfg (basic-block flow). Bounded by depth/max_nodes/max_edges.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "ea": {"type": "string"}, "kind": {"type": "string", "enum": ["calls", "cfg"]}, "depth": {"type": "integer", "maximum": 5}, "max_nodes": {"type": "integer"}, "max_edges": {"type": "integer"}}, "required": ["ea"]}),
         },
         ToolDef {
             name: "ida_search",

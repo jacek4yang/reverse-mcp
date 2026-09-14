@@ -1,7 +1,7 @@
 //! Method dispatch for worker requests. Each method maps onto one or a few
 //! `IdaBackend` calls. Unknown methods yield a stable error code.
 
-use rmcp_core::backend::IdaBackend;
+use rmcp_core::backend::{GraphParams, IdaBackend};
 use rmcp_core::error::Error;
 use rmcp_core::protocol::{WorkerRequest, WorkerResponse};
 use serde_json::{Value, json};
@@ -174,8 +174,32 @@ fn dispatch(
         }
         "graph" => {
             let ea = ea_param(&params, "ea")?;
+            let kind = params
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("calls")
+                .to_string();
+            if !matches!(kind.as_str(), "calls" | "cfg") {
+                return Err(Error::Worker(format!(
+                    "unknown graph kind '{kind}' (calls|cfg)"
+                )));
+            }
             let depth = params.get("depth").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
-            need_backend(state)?.graph(ea, depth)
+            let max_nodes = params
+                .get("max_nodes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200) as usize;
+            let max_edges = params
+                .get("max_edges")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(400) as usize;
+            let params = GraphParams {
+                kind,
+                depth,
+                max_nodes,
+                max_edges,
+            };
+            need_backend(state)?.graph(ea, &params)
         }
         "search_text" => {
             let needle = params
