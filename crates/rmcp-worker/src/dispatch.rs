@@ -585,7 +585,9 @@ fn dispatch(
                 format!("{root:#x}|{budgets:?}"),
                 current_rev,
             );
-            if resume.is_none() && let Some(cached) = state.workflow_cache.get(&key) {
+            if resume.is_none()
+                && let Some(cached) = state.workflow_cache.get(&key)
+            {
                 return Ok(json!({
                     "cached": true,
                     "cache_hits": state.workflow_cache.hits,
