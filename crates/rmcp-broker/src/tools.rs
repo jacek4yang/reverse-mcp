@@ -689,6 +689,98 @@ pub async fn tool_installations(broker: &Broker, _args: Value) -> Result<Value, 
     }))
 }
 
+/// ida_health — self-report that works even when no IDA install is found.
+/// Surfaces discovery results, runtime-DLL presence, worker-exe probe and
+/// idalib-feature availability so agents can self-diagnose instead of guessing.
+pub async fn tool_health(broker: &Broker, _args: Value) -> Result<Value, McpError> {
+    let explicit = broker.config.ida_dir.clone();
+    let installs = tokio::task::spawn_blocking(move || {
+        rmcp_core::discovery::discover_all(explicit.as_deref())
+    })
+    .await
+    .map_err(|e| McpError::invalid_params(format!("discovery join: {e}"), None))?;
+
+    // Runtime DLL presence per discovered install (the loader resolves these
+    // from PATH or the install dir; absence = worker cannot start).
+    let runtime_dlls = ["ida.dll", "idalib.dll"];
+    let installs: Vec<Value> = installs
+        .iter()
+        .map(|i| {
+            let dll_status: Vec<Value> = runtime_dlls
+                .iter()
+                .map(|d| {
+                    json!({
+                        "dll": d,
+                        "present": i.root.join(d).exists(),
+                    })
+                })
+                .collect();
+            json!({
+                "root": i.root,
+                "version": i.version,
+                "source": i.source.as_str(),
+                "backend": i.backend,
+                "decompilers": i.decompilers,
+                "runtime_dlls": dll_status,
+            })
+        })
+        .collect();
+    // Worker probe: can the exe answer the mock probe (protocol alive)?
+    let worker_probe_ok = (|| {
+        let exe = std::env::current_exe().ok()?;
+        let out = std::process::Command::new(exe)
+            .args(["worker", "--probe-backend", "mock"])
+            .output()
+            .ok()?;
+        Some(out.status.success())
+    })()
+    .unwrap_or(false);
+
+    // Configured IDADIR / env visibility for the "why is discovery empty" case.
+    let idadir_set = std::env::var_os("IDADIR").is_some();
+
+    let healthy = worker_probe_ok
+        && installs.iter().any(|i| {
+            i["runtime_dlls"]
+                .as_array()
+                .map(|a| a.iter().all(|d| d["present"].as_bool().unwrap_or(false)))
+                .unwrap_or(false)
+        });
+
+    let mut hint = String::new();
+    if installs.is_empty() {
+        hint.push_str(
+            "No IDA installation discovered; set IDADIR or add the IDA install dir to PATH. ",
+        );
+    } else if !healthy {
+        hint.push_str(
+            "IDA installations found but the runtime DLLs are incomplete; verify the install. ",
+        );
+    }
+    if !worker_probe_ok {
+        hint.push_str("Worker binary probe failed; the reverse-mcp exe may be broken or blocked. ");
+    }
+    if healthy {
+        hint.push_str("All checks passed; open a database with ida_db(action=open).");
+    }
+
+    let idalib_feature = {
+        // The broker crate itself never links idalib; detect the feature
+        // the same way spawning does: probe the worker exe.
+        let mut pool = broker.pool.lock().await;
+        pool.ensure_worker_exe().is_ok() && pool.worker_has_idalib_feature()
+    };
+
+    Ok(json!({
+        "healthy": healthy,
+        "worker_probe_ok": worker_probe_ok,
+        "idalib_feature": idalib_feature,
+        "idadir_set": idadir_set,
+        "installations": installs,
+        "hint": hint,
+    }))
+}
+
 /// Route a named tool (used by ida_batch).
 async fn run_named(broker: &Broker, tool: &str, args: Value) -> Result<Value, McpError> {
     match tool {

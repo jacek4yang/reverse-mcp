@@ -223,6 +223,10 @@ async fn real_chain(ida_dir: &std::path::Path) -> Result<(), String> {
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
     let path = std::env::var("PATH").unwrap_or_default();
     cmd.env("PATH", format!("{};{}", ida_dir.display(), path));
+    // Mirror the broker: the worker preloads the delay-loaded IDA DLLs (and
+    // seeds its DLL search path) when this is set, so initialization happens
+    // at startup with pristine stdio instead of mid-protocol.
+    cmd.env("REVERSE_MCP_IDA_DIR", ida_dir);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let mut reader = BufReader::new(stdout);

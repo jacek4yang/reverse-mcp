@@ -80,18 +80,103 @@ fn dup_stdout() -> std::io::Result<Box<dyn Write + Send>> {
     )?))
 }
 
-/// Preload ida.dll and idalib.dll so their initialization (including IDA's
-/// embedded Python) happens at worker startup with pristine stdio instead of
-/// mid-process during the first idalib call.
+/// Preload ida.dll and idalib.dll before `main` (via a `.CRT$XCU` startup
+/// constructor). When the parent process exports REVERSE_MCP_IDA_DIR, the
+/// worker's IDA dependencies are delay-loaded; binding them here — instead of
+/// mid-run when the delay-load helper first fires inside `db.open` — runs
+/// IDA's DllMain-time initialization during loader startup, the same timing
+/// as static imports, which IDA requires. A no-op when the variable is unset,
+/// so the broker process (same binary) never touches IDA at startup.
+///
+/// Pure Win32 by design: no Rust runtime facilities are guaranteed before
+/// `main`, so this must not allocate through paths that assume std init or
+/// panic (a panic here aborts before any handler exists).
 #[cfg(windows)]
-fn preload_ida_dlls() {
-    use windows_sys::Win32::System::LibraryLoader::LoadLibraryW;
-    for dll in ["ida.dll", "idalib.dll"] {
-        let wide: Vec<u16> = dll.encode_utf16().chain(std::iter::once(0)).collect();
-        // SAFETY: wide is a valid NUL-terminated wide string.
+#[used]
+#[unsafe(link_section = ".CRT$XCU")]
+static IDA_DLL_PRELOAD: unsafe extern "C" fn() = preload_ida_dlls;
+
+#[cfg(windows)]
+unsafe extern "C" fn preload_ida_dlls() {
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL, GetFileAttributesW,
+    };
+    use windows_sys::Win32::System::Environment::{
+        GetEnvironmentVariableW, SetEnvironmentVariableW,
+    };
+    use windows_sys::Win32::System::LibraryLoader::{LoadLibraryW, SetDllDirectoryW};
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    let var = wide("REVERSE_MCP_IDA_DIR");
+    let mut dir = [0u16; 1024];
+    // SAFETY: dir is a writable buffer of dir.len() chars; var is
+    // NUL-terminated.
+    let n = unsafe { GetEnvironmentVariableW(var.as_ptr(), dir.as_mut_ptr(), dir.len() as u32) };
+    // 0 = not set; n >= dir.len() = path too long for our buffer. Both are
+    // non-fatal: leave resolution to the delay-load helper and later probes.
+    if n == 0 || n as usize >= dir.len() {
+        return;
+    }
+
+    // The delay-load helper resolves ida.dll's own dependencies only from the
+    // SetDllDirectory entry (PATH mutation is not honored there).
+    // SAFETY: dir is a NUL-terminated wide path from the environment.
+    let dir = &dir[..n as usize];
+    unsafe {
+        SetDllDirectoryW(dir.as_ptr());
+    }
+
+    // IDA's own runtime (plugins, loaders, embedded python) resolves files
+    // relative to PATH during open_database; SetDllDirectoryW alone does not
+    // cover those lookups. Prepend the IDA dir to PATH before any IDA code
+    // runs so the worker does not depend on the broker mutating PATH.
+    let path_var = wide("PATH");
+    let mut old_path = [0u16; 32768];
+    // SAFETY: old_path is a writable buffer; path_var is NUL-terminated.
+    let np = unsafe { GetEnvironmentVariableW(path_var.as_ptr(), old_path.as_mut_ptr(), 32768) };
+    if (np as usize) < old_path.len() {
+        let mut new_path: Vec<u16> = dir.to_vec();
+        new_path.push(u16::from(b';'));
+        new_path.extend_from_slice(&old_path[..np as usize]);
+        new_path.push(0);
+        // SAFETY: new_path is NUL-terminated.
         unsafe {
-            LoadLibraryW(wide.as_ptr());
+            SetEnvironmentVariableW(path_var.as_ptr(), new_path.as_ptr());
         }
+    }
+
+    // IDA's embedded Python needs a home or its init fails and the worker
+    // dies; mirror the broker's PYTHONHOME default here so a worker spawned
+    // without the broker's full env still initializes.
+    let pyhome_var = wide("PYTHONHOME");
+    let mut probe = [0u16; 1];
+    // SAFETY: probe is a valid (too-small) buffer; we only need the
+    // set/unset answer.
+    let pyhome_set = unsafe { GetEnvironmentVariableW(pyhome_var.as_ptr(), probe.as_mut_ptr(), 1) };
+    if pyhome_set == 0 {
+        let mut pyhome: Vec<u16> = dir.to_vec();
+        pyhome.extend(wide("\\Python311"));
+        // SAFETY: pyhome is NUL-terminated.
+        let attrs = unsafe { GetFileAttributesW(pyhome.as_ptr()) };
+        if attrs != FILE_ATTRIBUTE_NORMAL && attrs & FILE_ATTRIBUTE_DIRECTORY != 0 {
+            // SAFETY: pyhome is NUL-terminated.
+            unsafe {
+                SetEnvironmentVariableW(pyhome_var.as_ptr(), pyhome.as_ptr());
+            }
+        }
+    }
+
+    let mut h1: *mut core::ffi::c_void = std::ptr::null_mut();
+    let mut h2: *mut core::ffi::c_void = std::ptr::null_mut();
+    for (dll, slot) in [("ida.dll", &mut h1), ("idalib.dll", &mut h2)] {
+        let name = wide(dll);
+        // SAFETY: name is a NUL-terminated wide string. Failures are
+        // intentionally silent here; the worker and ida_health report
+        // missing-runtime diagnostics later.
+        *slot = unsafe { LoadLibraryW(name.as_ptr()) };
     }
 }
 
@@ -109,16 +194,8 @@ fn dup_stdout() -> std::io::Result<Box<dyn Write + Send>> {
 
 /// Run the worker loop until stdin closes; returns the process exit code.
 pub fn worker_main() -> i32 {
-    // The IDA library is delay-loaded; when its DLLs (and IDA's embedded
-    // Python) initialize mid-process — e.g. during the first db.open — IDA's
-    // init terminates the worker. Preload the IDA DLLs before the protocol
-    // loop so all initialization happens at startup, mirroring the timing of
-    // a statically-linked worker. The broker sets REVERSE_MCP_IDA_DIR only
-    // for idalib workers; mock workers (and --probe-backend) skip this.
-    #[cfg(windows)]
-    if std::env::var("REVERSE_MCP_IDA_DIR").is_ok() {
-        preload_ida_dlls();
-    }
+    // IDA DLL preloading happens in the .CRT$XCU constructor above, before
+    // main runs, whenever the parent exported REVERSE_MCP_IDA_DIR.
 
     // Log anything fatal to stderr; stdout is protocol-only.
     let ida_dir = std::env::var("REVERSE_MCP_IDA_DIR").unwrap_or_default();

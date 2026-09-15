@@ -2,7 +2,7 @@
 
 Status: accurate as of commit `d1d1937` (2026-09-15), branch feat/issue17-versioned-backends.
 
-17 tools. Every list/search/graph result is bounded; oversized responses spill
+25 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -24,6 +24,13 @@ Per-DB capability report: `decompile` (hexrays present), `types` (false today),
 ### ida_installations
 All IDA installs discovered on the machine: version, root, source, decompilers,
 backend readiness. Use with `ida_db open ida_version`.
+
+### ida_health
+Self-diagnosis that works even when no IDA install is found: discovery results
+with per-install runtime-DLL presence (`ida.dll`, `idalib.dll`), worker-binary
+probe, idalib feature availability, and a remediation hint. Call this first
+when opens fail or the server appears broken: it distinguishes "no install
+found" from "install present but DLLs missing" from "worker binary broken".
 
 ## Reading
 
