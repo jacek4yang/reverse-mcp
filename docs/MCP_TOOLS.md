@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-28 tools. Every list/search/graph result is bounded; oversized responses spill
+29 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -200,6 +200,34 @@ Responses are cached per (workflow, normalized request, revision) and any
 successful mutation invalidates the whole cache; cache hits carry
 `cached: true` and `cache_hits`. Oversized responses spill to the result store
 as usual.
+
+### ida_deep
+Deep analysis (#10): recursive decompilation with type propagation and
+bounded data-flow. Three tasks:
+
+- `deep_function` — post-order recursive walk: callees decompile first, then
+  the caller; the recorded prototype already reflects callee improvements,
+  so each function is decompiled exactly once per run. Propagation then runs
+  on the collected call graph: a function whose prototype changed marks its
+  callers dirty and only those are re-checked (functions whose callees did
+  not change are never touched again). Reports a convergence trace
+  (`iteration N: k type changes ... 0 -> converged`), per-function dossiers
+  (prototype, direct call sites with EAs, indirect calls) and a
+  `skipped` list explaining what the budget left out.
+- `trace_dataflow` — bounded source->sink evidence across callers/callees
+  (`direction=forward|backward|both`). Every evidence row cites the concrete
+  call-site EA, the function containing it, and a confidence tag:
+  `confirmed` for direct calls, `heuristic` for indirect sites.
+- `retype` — apply a C prototype declaration to a function (mutation;
+  invalidates the analysis caches and bumps the revision).
+
+Budgets (agent-controlled, hard caps): `depth` (1..8, default 3),
+`max_functions` (1..100, default 20), `max_iterations` (1..20, default 5),
+`max_calls` (1..200, default 24), `timeout_ms` (1000..1800000) — wall-clock
+budget; on expiry the run stops and reports `budget_hit: true` with partial
+results. Repeats on an unchanged DB revision are served from the
+revision-keyed cache (`cached: true`), so re-running without DB changes
+performs no decompilation at all.
 
 ## Resources (read-only context)
 

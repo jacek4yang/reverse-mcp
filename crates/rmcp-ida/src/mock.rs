@@ -719,11 +719,92 @@ impl IdaBackend for MockBackend {
                 },
             );
         }
+        // Mirror the fake call graph of deep_function_info so dataflow
+        // frontier expansion works over the index.
+        let edges: &[(u64, u64)] = &[
+            (0x401000, 0x401100),
+            (0x401000, 0x401200),
+            (0x401000, 0x401300),
+            (0x401000, 0x401400),
+        ];
+        for (from, to) in edges {
+            if let Some(f) = idx.functions.get_mut(from) {
+                f.callees.push(*to);
+            }
+            if let Some(f) = idx.functions.get_mut(to) {
+                f.callers.push(*from);
+            }
+        }
         Ok((idx, "mock-md5".into()))
     }
 
     fn input_md5(&self) -> Result<String> {
         Ok("mock-md5".into())
+    }
+
+    fn deep_function_info(&self, ea: u64, max_calls: usize) -> Result<Value> {
+        self.require_open()?;
+        let f = self
+            .functions_vec()
+            .into_iter()
+            .find(|f| f.ea_start == ea)
+            .ok_or_else(|| Error::Worker(format!("no function at {ea:#x}")))?;
+        // Deterministic fake call graph: main -> helper/decrypt_packet/
+        // dispatch/call_via_ptr; call_via_ptr has one indirect site.
+        let known_callees: &[u64] = match ea {
+            0x401000 => &[0x401100, 0x401200, 0x401300, 0x401400],
+            0x401400 => &[0], // indirect only
+            _ => &[],
+        };
+        let calls: Vec<Value> = known_callees
+            .iter()
+            .take(max_calls)
+            .map(|&c| {
+                if c == 0 {
+                    json!({
+                        "call_ea": format!("{ea:#x}+10"),
+                        "direct": false,
+                        "target_name": "(*(void (**)(void))(ptr))()",
+                        "args": [],
+                    })
+                } else {
+                    json!({
+                        "call_ea": format!("{ea:#x}"),
+                        "direct": true,
+                        "target_ea": format!("{c:#x}"),
+                        "target_name": self.names.get(&c).cloned().unwrap_or_default(),
+                        "args": [],
+                    })
+                }
+            })
+            .collect();
+        Ok(json!({
+            "ea": format!("{ea:#x}"),
+            "name": f.name,
+            "prototype": {
+                "known": true,
+                "ret_type": "int",
+                "arg_types": ["int", "int"],
+            },
+            "calls": calls,
+            "calls_truncated": known_callees.len() > max_calls,
+        }))
+    }
+
+    fn deep_apply_prototype(&mut self, ea: u64, decl: &str) -> Result<MutationOutcome> {
+        self.require_open()?;
+        if !self.names.contains_key(&ea) {
+            return Err(Error::Worker(format!("no function at {ea:#x}")));
+        }
+        if decl.trim().is_empty() {
+            return Err(Error::Worker("empty prototype declaration".into()));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"ea": ea, "decl": decl}),
+        })
     }
 }
 

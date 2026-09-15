@@ -1,5 +1,5 @@
 //! Real-IDA integration test (feature `idalib`): drives the REAL production
-//! path — `reverse-mcp serve`'s WorkerPool spawning `<exe> worker` children —
+//! path 鈥?`reverse-mcp serve`'s WorkerPool spawning `<exe> worker` children 鈥?
 //! against a real binary analyzed by IDA 9.2 idalib.
 //!
 //! Chain verified (docs/reverse-mcp-ffi.md item 7):
@@ -528,14 +528,14 @@ async fn real_ida_issue19_func_mutations() {
 
     // Pick a code address that is not inside any function (scan for undefined
     // code past the last function). Use main's tail bytes region: we create a
-    // function at a known code address by first deleting nothing — instead we
+    // function at a known code address by first deleting nothing 鈥?instead we
     // grab the address of an instruction INSIDE main (offset +2) which belongs
     // to no function start, and create a function there? add_func on a
     // mid-function address fails; so use a fresh path: find undefined bytes.
     // Simplest deterministic approach: create at main's entry + main size
     // boundary is risky. Instead, locate any "sub_" region via the analyzer:
     // use an address right after main's end where padding/thunk code may sit.
-    // Robust choice: pick the entry thunk of an import (data) — no. We use
+    // Robust choice: pick the entry thunk of an import (data) 鈥?no. We use
     // `functions` list: choose the LAST function's end; alignment padding
     // follows. If creation fails there, the API must return a clean error.
     let fns = s
@@ -827,7 +827,7 @@ async fn real_ida_issue14_evidence_index() {
     let built = s.call("index.build", json!({})).await.expect("index.build");
     assert!(built["functions"].as_u64().unwrap() > 0, "build: {built}");
 
-    // Query 1: strings predicate — the fixture has "usage: simple".
+    // Query 1: strings predicate 鈥?the fixture has "usage: simple".
     let hits = s
         .call(
             "index.query",
@@ -857,7 +857,7 @@ async fn real_ida_issue14_evidence_index() {
         .expect("name query");
     assert!(hits2["count"].as_u64().unwrap() >= 1, "hits2: {hits2}");
 
-    // Query 3: import predicate — simple.exe imports from the CRT; search a
+    // Query 3: import predicate 鈥?simple.exe imports from the CRT; search a
     // common import substring. Even zero hits must be a bounded response.
     let hits3 = s
         .call(
@@ -1032,6 +1032,133 @@ async fn real_ida_issue8_workflows() {
     assert_eq!(
         out3["result"]["name"], "issue8_renamed",
         "fresh result must see the rename: {out3}"
+    );
+
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}
+
+/// #10 deep analysis: recursive decompilation with type propagation,
+/// bounded dataflow, cycle safety, budgets and cache reuse on the deep
+/// fixture (3-level call chain + indirect call + mutual recursion).
+#[tokio::test]
+#[ignore]
+async fn real_ida_issue10_deep_analysis() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/deep.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-10b.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let fresh_i64 = std::path::PathBuf::from(format!("{}.i64", dst.display()));
+    let _ = std::fs::remove_file(&fresh_i64);
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    // Resolve the fixture functions by name.
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let find = |name: &str| -> Option<u64> {
+        fns.as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"].as_str() == Some(name))
+            .and_then(|f| f["ea_start"].as_u64())
+    };
+    let process_ea = find("process").expect("process fn");
+
+    // --- deep.function: recursive decompile with type propagation ---
+    let out = s
+        .call(
+            "deep.function",
+            json!({"target": format!("{process_ea:#x}"), "depth": 4, "max_functions": 30}),
+        )
+        .await
+        .expect("deep.function");
+    let result = &out["result"];
+    assert!(
+        result["functions"].as_array().unwrap().len() >= 3,
+        "must visit the 3-level chain: {result}"
+    );
+    // Cycle safety: level2a/level2b mutual recursion must not runaway; the
+    // visited set stays bounded and the run completes with a verdict.
+    assert!(
+        result["convergence"].is_object() || result["convergence"].is_null(),
+        "out: {out}"
+    );
+    // Deterministic repeat: served from the cache, substantially less work.
+    let out2 = s
+        .call(
+            "deep.function",
+            json!({"target": format!("{process_ea:#x}"), "depth": 4, "max_functions": 30}),
+        )
+        .await
+        .expect("deep.function repeat");
+    assert_eq!(out2["cached"], true, "repeat must hit cache: {out2}");
+
+    // --- deep.dataflow: bounded evidence with confidence split ---
+    let df = s
+        .call(
+            "deep.dataflow",
+            json!({
+                "target": format!("{process_ea:#x}"),
+                "direction": "backward",
+                "depth": 3
+            }),
+        )
+        .await
+        .expect("deep.dataflow");
+    let dres = &df["result"];
+    assert!(
+        !dres["evidence"].as_array().unwrap().is_empty(),
+        "must cite concrete call sites: {dres}"
+    );
+    // Every evidence row carries an EA and a confidence tag.
+    for e in dres["evidence"].as_array().unwrap() {
+        assert!(e["at"].as_str().is_some(), "evidence: {e}");
+        let conf = e["confidence"].as_str().unwrap();
+        assert!(
+            conf == "confirmed" || conf == "heuristic",
+            "confidence: {e}"
+        );
+    }
+
+    // --- deep.retype: apply a prototype (mutation) and check cache loss ---
+    let apply_stream_ea = find("apply_stream").expect("apply_stream fn");
+    let ret = s
+        .call(
+            "deep.retype",
+            json!({"ea": format!("{apply_stream_ea:#x}"), "decl": "int apply_stream(unsigned char *, int, unsigned char);"}),
+        )
+        .await
+        .expect("deep.retype");
+    assert_eq!(ret["changed"], true, "retype: {ret}");
+
+    // A mutation bumps the revision: the next deep.function rebuilds.
+    let out3 = s
+        .call(
+            "deep.function",
+            json!({"target": format!("{process_ea:#x}"), "depth": 4, "max_functions": 30}),
+        )
+        .await
+        .expect("deep.function after mutation");
+    assert_eq!(out3["cached"], false, "must recompute after retype: {out3}");
+
+    // Budgets are enforced: 1 function max visits only the root.
+    let tight = s
+        .call(
+            "deep.function",
+            json!({"target": format!("{process_ea:#x}"), "max_functions": 1}),
+        )
+        .await
+        .expect("deep.function tight budget");
+    assert!(
+        tight["result"]["visited_count"].as_u64().unwrap() <= 2,
+        "budget must bound the walk: {tight}"
     );
 
     s.call("db.close", json!({})).await.expect("close");

@@ -239,6 +239,17 @@ pub trait IdaBackend: Send {
 
     /// Input-file md5 (from db.metadata), for cache identity.
     fn input_md5(&self) -> Result<String>;
+
+    // ---- #10: deep analysis (recursive decompile, type propagation, dataflow) ----
+
+    /// Full analysis dossier of the function at `ea`: prototype (return +
+    /// per-arg type texts), bounded call sites with rendered argument
+    /// expressions and direct-target EAs, plus bounded ctree/lvar context.
+    fn deep_function_info(&self, ea: u64, max_calls: usize) -> Result<Value>;
+
+    /// Apply a C prototype declaration to the function at `ea`
+    /// (mutation; bumps revision on success).
+    fn deep_apply_prototype(&mut self, ea: u64, decl: &str) -> Result<MutationOutcome>;
 }
 
 /// Boxed alias used across the workspace.

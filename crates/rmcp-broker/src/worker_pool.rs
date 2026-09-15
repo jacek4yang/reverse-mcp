@@ -30,8 +30,28 @@ pub struct WorkerSession {
 }
 
 impl WorkerSession {
-    /// Send a request and await its response (2 min timeout).
+    /// Send a request and await its response (2 min default timeout).
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
+        self.call_with_timeout(method, params, Duration::from_secs(120))
+            .await
+    }
+
+    /// Same as [`call`](Self::call) with an agent-chosen timeout. Long
+    /// analysis methods read `timeout_ms` from `params` (clamped 5s..30min)
+    /// so an agent can bound exactly how long one call may run.
+    pub async fn call_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        default: Duration,
+    ) -> Result<Value> {
+        // Agent-controlled budget: clamped so a hostile value cannot disable
+        // the timeout entirely.
+        let timeout = params
+            .get("timeout_ms")
+            .and_then(|v| v.as_u64())
+            .map(|ms| Duration::from_millis(ms.clamp(5_000, 1_800_000)))
+            .unwrap_or(default);
         let tx = self
             .tx
             .as_ref()
@@ -47,10 +67,13 @@ impl WorkerSession {
         ))
         .await
         .map_err(|_| Error::Worker("worker request channel closed".into()))?;
-        match tokio::time::timeout(Duration::from_secs(120), rx_back).await {
+        match tokio::time::timeout(timeout, rx_back).await {
             Ok(Ok(v)) => v,
             Ok(Err(_)) => Err(Error::Worker("worker dropped response (crashed?)".into())),
-            Err(_) => Err(Error::Worker("worker timed out".into())),
+            Err(_) => Err(Error::Worker(format!(
+                "worker timed out after {}s (budget: the agent may pass timeout_ms, 5000..1800000)",
+                timeout.as_secs()
+            ))),
         }
     }
 

@@ -337,3 +337,92 @@ pub fn lvar_rename(cfunc: *mut hexrays::cfunc_t, var_defea: u64, new_name: &str)
     };
     unsafe { ffi::ffix::idalib_lvar_rename(cfunc, var_defea, cname.as_ptr()) }
 }
+
+// ---- deep analysis (#10): call sites, prototypes, prototype apply ----
+
+/// One call site of a decompiled function (concrete ctree evidence).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CallRow {
+    pub call_ea: u64,
+    pub target_ea: u64,
+    pub direct: bool,
+    pub target_name: String,
+    pub args: Vec<String>,
+}
+
+/// Full prototype of a decompiled function: return + per-arg type texts.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Prototype {
+    pub ret_type: String,
+    pub arg_types: Vec<String>,
+    pub truncated: bool,
+    pub known: bool,
+}
+
+/// Full prototype of a decompiled function (`get_func_details` walk).
+pub fn func_prototype(cfunc: *mut hexrays::cfunc_t, max_args: usize) -> Prototype {
+    unsafe {
+        let p = ffi::ffix::idalib_func_prototype(cfunc, max_args);
+        let Some(p) = p.as_ref() else {
+            return Prototype {
+                ret_type: String::new(),
+                arg_types: Vec::new(),
+                truncated: false,
+                known: false,
+            };
+        };
+        use ffi::ffix;
+        let arg_types = (0..ffix::idalib_proto_arg_count(p))
+            .map(|i| ffix::idalib_proto_arg_type(p, i).to_string())
+            .collect();
+        Prototype {
+            ret_type: ffix::idalib_proto_ret_type(p).to_string(),
+            arg_types,
+            truncated: ffix::idalib_proto_truncated(p),
+            known: ffix::idalib_proto_known(p),
+        }
+    }
+}
+
+/// Bounded call-site rows of a decompiled function.
+pub fn call_rows(cfunc: *mut hexrays::cfunc_t, limit: usize) -> (Vec<CallRow>, bool) {
+    unsafe {
+        let raw = ffi::ffix::idalib_calls_walk(cfunc, limit);
+        if raw.is_null() {
+            return (Vec::new(), false);
+        }
+        let n = ffi::ffix::idalib_call_rows_size(raw);
+        let truncated = ffi::ffix::idalib_call_rows_truncated(raw);
+        let mut rows = Vec::with_capacity(n);
+        for i in 0..n {
+            let argc = ffi::ffix::idalib_call_row_arg_count(raw, i);
+            let args = (0..argc)
+                .map(|j| ffi::ffix::idalib_call_row_arg(raw, i, j).to_string())
+                .collect();
+            rows.push(CallRow {
+                call_ea: ffi::ffix::idalib_call_row_call_ea(raw, i),
+                target_ea: ffi::ffix::idalib_call_row_target_ea(raw, i),
+                direct: ffi::ffix::idalib_call_row_direct(raw, i),
+                target_name: ffi::ffix::idalib_call_row_target_name(raw, i).to_string(),
+                args,
+            });
+        }
+        ffi::ffix::idalib_call_rows_free(raw);
+        (rows, truncated)
+    }
+}
+
+/// Apply a parsed C prototype declaration to the function at `cfunc`'s entry.
+/// Mutation: caller must bump the revision.
+pub fn apply_prototype(cfunc: *mut hexrays::cfunc_t, decl: &str) -> bool {
+    let cdecl = match std::ffi::CString::new(decl) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    unsafe { ffi::ffix::idalib_apply_prototype(cfunc, cdecl.as_ptr()) }
+}
+
+/// Current prototype as one-line text (empty when the type is unknown).
+pub fn prototype_text(cfunc: *mut hexrays::cfunc_t) -> String {
+    unsafe { ffi::ffix::idalib_prototype_text(cfunc) }.to_string()
+}
