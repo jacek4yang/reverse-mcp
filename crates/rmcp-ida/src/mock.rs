@@ -127,6 +127,14 @@ impl IdaBackend for MockBackend {
             comments: true,
             bookmarks: true,
             plugins: true,
+            ctree: !self.decompile_off,
+            lvars: !self.decompile_off,
+            microcode: false,
+            switches: true,
+            fixups: true,
+            tails: true,
+            sp_delta: true,
+            file_map: true,
         }
     }
 
@@ -384,6 +392,243 @@ impl IdaBackend for MockBackend {
             revision_after,
             detail: json!({"ea": ea, "applied": type_decl}),
         })
+    }
+
+    // ---- #19: database / binary metadata (deterministic fixture data) ----
+
+    fn db_metadata(&self) -> Result<Value> {
+        self.require_open()?;
+        Ok(json!({
+            "md5": "d41d8cd98f00b204e9800998ecf8427e",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "imagebase": 0x400000,
+            "entry_count": 1,
+            "entries": [{"ordinal": 0, "ea": 0x401000, "name": "main"}],
+            "tls_callbacks": Value::Null,
+            "tls_callbacks_supported": false,
+            "exception_handlers_supported": false,
+        }))
+    }
+
+    fn imports(&self, module: Option<usize>, offset: usize, limit: usize) -> Result<Value> {
+        self.require_open()?;
+        let entries = vec![
+            json!({"ea": 0x403000u64, "name": "CreateFileA", "ordinal": 0u64}),
+            json!({"ea": 0x403004u64, "name": "ReadFile", "ordinal": 1u64}),
+        ]
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect::<Vec<_>>();
+        let modules = vec![json!({
+            "index": 0,
+            "name": "KERNEL32.dll",
+            "entries": entries,
+        })];
+        match module {
+            Some(idx) if idx >= modules.len() => Ok(json!({"modules": [], "module_count": 1})),
+            _ => Ok(json!({"modules": modules, "module_count": 1})),
+        }
+    }
+
+    fn fixups(&self, offset: usize, limit: usize) -> Result<Value> {
+        self.require_open()?;
+        let all = vec![
+            json!({"ea": 0x402000, "kind": 1, "flags": 0, "base": 0, "sel": 0, "off": 0x403000, "displacement": 0}),
+            json!({"ea": 0x402008, "kind": 1, "flags": 0, "base": 0, "sel": 0, "off": 0x403004, "displacement": 0}),
+        ];
+        let total = all.len();
+        Ok(json!({
+            "total": total,
+            "fixups": all.into_iter().skip(offset).take(limit).collect::<Vec<_>>(),
+        }))
+    }
+
+    fn file_map(&self, value: u64, to_ea: bool) -> Result<Value> {
+        self.require_open()?;
+        // Deterministic fixture mapping: EA 0x401000..0x402000 <-> file
+        // offset 0x400..0x1400 (mock of get_fileregion_offset/ea).
+        let ea2off = |ea: u64| ea.checked_sub(0x400000).map(|v| v + 0x400);
+        let off2ea = |off: u64| off.checked_sub(0x400).map(|v| v + 0x400000);
+        if to_ea {
+            off2ea(value)
+                .map(|ea| json!({"file_offset": value, "ea": ea}))
+                .ok_or_else(|| {
+                    Error::Worker(format!("file offset {value:#x} does not map to an address"))
+                })
+        } else {
+            ea2off(value)
+                .map(|off| json!({"ea": value, "file_offset": off}))
+                .ok_or_else(|| {
+                    Error::Worker(format!(
+                        "address {value:#x} does not map into the input file"
+                    ))
+                })
+        }
+    }
+
+    // ---- #19: functions / control flow ----
+
+    fn func_tails(&self, ea: u64) -> Result<Value> {
+        let f = self.function_at(ea)?;
+        Ok(json!({
+            "function": f.ea_start,
+            "chunks": [{"start": f.ea_start, "end": f.ea_end, "size": f.size}],
+            "is_tail_target": false,
+        }))
+    }
+
+    fn func_create(&mut self, start: u64, end: Option<u64>) -> Result<MutationOutcome> {
+        self.require_open()?;
+        self.names
+            .entry(start)
+            .or_insert_with(|| format!("sub_{start:x}"));
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"start": start, "end": end}),
+        })
+    }
+
+    fn func_delete(&mut self, ea: u64) -> Result<MutationOutcome> {
+        self.require_open()?;
+        if self.names.remove(&ea).is_none() {
+            return Err(Error::Worker(format!("no function at {ea:#x}")));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"ea": ea}),
+        })
+    }
+
+    fn func_resize(
+        &mut self,
+        ea: u64,
+        new_start: Option<u64>,
+        new_end: Option<u64>,
+    ) -> Result<MutationOutcome> {
+        self.require_open()?;
+        if new_start.is_none() && new_end.is_none() {
+            return Err(Error::Worker(
+                "func_resize requires new_start and/or new_end".into(),
+            ));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"ea": ea, "start": new_start, "end": new_end}),
+        })
+    }
+
+    fn func_switch_info(&self, ea: u64) -> Result<Value> {
+        self.require_open()?;
+        // dispatch at 0x401300 has the fixture's switch.
+        if ea == 0x401310 {
+            return Ok(json!({
+                "ea": ea,
+                "jump_table": 0x402100,
+                "ncases": 4,
+                "elbase": 0x401300,
+                "lowcase": 0,
+                "regnum": 0,
+            }));
+        }
+        Err(Error::Worker(format!("no switch information at {ea:#x}")))
+    }
+
+    fn func_sp_delta(&self, ea: u64) -> Result<Value> {
+        let _ = self.function_at(ea)?;
+        Ok(json!({"ea": ea, "sp_delta": -8}))
+    }
+
+    // ---- #19: Hex-Rays ----
+
+    fn hr_cfunc(
+        &self,
+        ea: u64,
+        include_ctree: bool,
+        include_lvars: bool,
+        limit: usize,
+    ) -> Result<Value> {
+        if self.decompile_off {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays not available in this backend".into(),
+            });
+        }
+        let f = self.function_at(ea)?;
+        let mut out = json!({
+            "function": f.name,
+            "ea": f.ea_start,
+            "return_type": "int",
+        });
+        if include_ctree {
+            // Deterministic ctree summary for decrypt_packet's XOR loop.
+            let rows: Vec<Value> = [
+                (f.ea_start, 0, "int main(int a, int b)"),
+                (f.ea_start + 4, 0, "return a + b"),
+            ]
+            .into_iter()
+            .take(limit)
+            .map(|(ea, op, text)| json!({"ea": ea, "op": op, "is_expr": op != 0, "text": text}))
+            .collect();
+            out["ctree"] = json!(rows);
+            out["ctree_truncated"] = json!(false);
+        }
+        if include_lvars {
+            out["lvars"] = json!([
+                {"defea": f.ea_start, "name": "a", "type_text": "int", "width": 4, "is_arg": true, "is_result": false},
+                {"defea": f.ea_start + 4, "name": "b", "type_text": "int", "width": 4, "is_arg": true, "is_result": false},
+            ]);
+            out["lvars_truncated"] = json!(false);
+        }
+        Ok(out)
+    }
+
+    fn hr_lvar_rename(
+        &mut self,
+        ea: u64,
+        var_defea: u64,
+        new_name: &str,
+    ) -> Result<MutationOutcome> {
+        if self.decompile_off {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays not available in this backend".into(),
+            });
+        }
+        let f = self.function_at(ea)?;
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"function": f.ea_start, "var_defea": var_defea, "new": new_name}),
+        })
+    }
+
+    // ---- #19: instructions / names ----
+
+    fn insn_features(&self, ea: u64) -> Result<Value> {
+        self.require_open()?;
+        Ok(json!({
+            "ea": ea,
+            "features": 0x0500, // CF_CALL|CF_JUMP on call sites in the fixture
+            "mnemonic": "mov",
+        }))
+    }
+
+    fn demangle_name(&self, name: &str) -> Result<Value> {
+        self.require_open()?;
+        let demangled = if name.starts_with("?") || name.starts_with("_Z") {
+            format!("{name}_demangled")
+        } else {
+            name.to_string()
+        };
+        Ok(json!({"name": name, "demangled": demangled, "changed": demangled != name}))
     }
 
     fn analyze_wait(&mut self) -> Result<Value> {

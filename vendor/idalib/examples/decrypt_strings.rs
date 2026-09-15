@@ -79,7 +79,7 @@ fn handle_xref(idb: &IDB, xref: &XRef) -> Option<EncString> {
             break;
         }
 
-        if insn.itype() == NN_lea
+        if i32::from(insn.itype()) == NN_lea
             && insn.operand_count() > 1
             && insn.operand(0)?.type_() == OperandType::Reg
         {
@@ -92,7 +92,7 @@ fn handle_xref(idb: &IDB, xref: &XRef) -> Option<EncString> {
             }
         }
 
-        if insn.itype() == NN_mov
+        if i32::from(insn.itype()) == NN_mov
             && insn.operand_count() > 1
             && insn.operand(0)?.type_() == OperandType::Reg
         {

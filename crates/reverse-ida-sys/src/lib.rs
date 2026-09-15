@@ -515,6 +515,7 @@ unsafe impl cxx::ExternType for cfunc_t {
     type Id = cxx::type_id!("cfunc_t");
     type Kind = cxx::kind::Opaque;
 }
+
 unsafe impl cxx::ExternType for citem_t {
     type Id = cxx::type_id!("citem_t");
     type Kind = cxx::kind::Opaque;

@@ -165,7 +165,7 @@ include_cpp! {
     generate!("FC_NOPREDS")
     generate!("FC_OUTLINES")
 
-    // hexrays — init/term are hand-written shims in hexrays_extras.h; the
+    // hexrays �?init/term are hand-written shims in hexrays_extras.h; the
     // SDK inline functions expand to the `callui` data import of ida.dll,
     // which is incompatible with delay-loading.
     generate!("cfuncptr_t")
@@ -680,6 +680,7 @@ pub mod ffix {
         include!("entry_extras.h");
         include!("func_extras.h");
         include!("hexrays_extras.h");
+        include!("hexrays_caps.h");
         include!("idalib_extras.h");
         include!("inf_extras.h");
         include!("kernwin_extras.h");
@@ -690,6 +691,7 @@ pub mod ffix {
         include!("search_extras.h");
         include!("strings_extras.h");
         include!("backend_extras.h");
+        include!("idasdk_extras.h");
 
         type c_short = autocxx::c_short;
         type c_int = autocxx::c_int;
@@ -717,6 +719,41 @@ pub mod ffix {
         type cinsn_t = super::hexrays::cinsn_t;
 
         type cblock_iter;
+
+        // ---- hexrays caps (hexrays_caps.h) ----
+        // Row lists are opaque C++ containers accessed via scalar accessors.
+        type CtreeRowList;
+        type LvarRowList;
+
+        unsafe fn idalib_ctree_walk(f: *mut cfunc_t, limit: usize) -> *mut CtreeRowList;
+        unsafe fn idalib_ctree_rows_free(rows: *mut CtreeRowList);
+        unsafe fn idalib_ctree_rows_size(rows: *const CtreeRowList) -> usize;
+        unsafe fn idalib_ctree_rows_truncated(rows: *const CtreeRowList) -> bool;
+        unsafe fn idalib_ctree_row_ea(rows: *const CtreeRowList, i: usize) -> u64;
+        unsafe fn idalib_ctree_row_op(rows: *const CtreeRowList, i: usize) -> u32;
+        unsafe fn idalib_ctree_row_a(rows: *const CtreeRowList, i: usize) -> u64;
+        unsafe fn idalib_ctree_row_b(rows: *const CtreeRowList, i: usize) -> u64;
+        unsafe fn idalib_ctree_row_c(rows: *const CtreeRowList, i: usize) -> u64;
+        unsafe fn idalib_ctree_row_is_expr(rows: *const CtreeRowList, i: usize) -> bool;
+        unsafe fn idalib_ctree_row_text(rows: *const CtreeRowList, i: usize) -> String;
+
+        unsafe fn idalib_lvars_walk(f: *mut cfunc_t, limit: usize) -> *mut LvarRowList;
+        unsafe fn idalib_lvar_rows_free(rows: *mut LvarRowList);
+        unsafe fn idalib_lvar_rows_size(rows: *const LvarRowList) -> usize;
+        unsafe fn idalib_lvar_rows_truncated(rows: *const LvarRowList) -> bool;
+        unsafe fn idalib_lvar_row_defea(rows: *const LvarRowList, i: usize) -> u64;
+        unsafe fn idalib_lvar_row_name(rows: *const LvarRowList, i: usize) -> String;
+        unsafe fn idalib_lvar_row_type_text(rows: *const LvarRowList, i: usize) -> String;
+        unsafe fn idalib_lvar_row_width(rows: *const LvarRowList, i: usize) -> i64;
+        unsafe fn idalib_lvar_row_is_arg(rows: *const LvarRowList, i: usize) -> bool;
+        unsafe fn idalib_lvar_row_is_result(rows: *const LvarRowList, i: usize) -> bool;
+
+        unsafe fn idalib_func_return_type(f: *mut cfunc_t) -> String;
+        unsafe fn idalib_lvar_rename(
+            f: *mut cfunc_t,
+            var_defea: u64,
+            new_name: *const c_char,
+        ) -> bool;
 
         type plugin_t = super::ffi::plugin_t;
 
@@ -1003,6 +1040,45 @@ pub mod ffix {
             minor: *mut c_int,
             build: *mut c_int,
         ) -> bool;
+
+        // ---- issue19 capability shims (idasdk_extras.h) ----
+        unsafe fn idalib_get_imagebase() -> c_ulonglong;
+        unsafe fn idalib_get_fileregion_offset(ea: c_ulonglong) -> i64;
+        unsafe fn idalib_get_fileregion_ea(off: i64) -> c_ulonglong;
+
+        unsafe fn idalib_get_import_module_qty() -> usize;
+        unsafe fn idalib_get_import_module_name(mod_index: c_int) -> String;
+        unsafe fn idalib_enum_import_names(
+            mod_index: c_int,
+            eas: &mut Vec<u64>,
+            names: &mut Vec<String>,
+            ords: &mut Vec<u64>,
+        ) -> usize;
+
+        unsafe fn idalib_get_first_fixup_ea() -> c_ulonglong;
+        unsafe fn idalib_get_next_fixup_ea(ea: c_ulonglong) -> c_ulonglong;
+        unsafe fn idalib_get_fixup(source: c_ulonglong, out: &mut Vec<u64>) -> bool;
+
+        unsafe fn idalib_get_switch_info(ea: c_ulonglong, out: &mut Vec<u64>) -> bool;
+
+        unsafe fn idalib_get_fchunk_qty() -> usize;
+        unsafe fn idalib_getn_fchunk(n: c_int) -> *const func_t;
+        unsafe fn idalib_func_is_tail(f: *const func_t) -> bool;
+        unsafe fn idalib_func_chunks(f: *mut func_t, out: &mut Vec<u64>) -> usize;
+
+        unsafe fn idalib_add_func(start: c_ulonglong, end: c_ulonglong) -> bool;
+        unsafe fn idalib_del_func(start: c_ulonglong) -> bool;
+        unsafe fn idalib_set_func_start(ea: c_ulonglong, newstart: c_ulonglong) -> c_int;
+        unsafe fn idalib_set_func_end(ea: c_ulonglong, newend: c_ulonglong) -> bool;
+
+        unsafe fn idalib_get_sp_delta(f: *mut func_t, ea: c_ulonglong) -> i64;
+
+        unsafe fn idalib_demangle_name(name: *const c_char) -> String;
+
+        unsafe fn idalib_get_insn_feature(ea: c_ulonglong) -> u32;
+        unsafe fn idalib_print_insn_mnem(ea: c_ulonglong) -> String;
+
+        unsafe fn idalib_get_segm_base(s: *const segment_t) -> c_ulonglong;
     }
 }
 
@@ -1206,7 +1282,14 @@ pub mod name {
 
 pub mod backend {
     pub use super::ffix::{
-        idalib_disasm_line, idalib_get_name, idalib_save_database, idalib_set_name,
+        idalib_add_func, idalib_del_func, idalib_demangle_name, idalib_disasm_line,
+        idalib_enum_import_names, idalib_func_chunks, idalib_func_is_tail, idalib_get_fchunk_qty,
+        idalib_get_fileregion_ea, idalib_get_fileregion_offset, idalib_get_first_fixup_ea,
+        idalib_get_fixup, idalib_get_imagebase, idalib_get_import_module_name,
+        idalib_get_import_module_qty, idalib_get_insn_feature, idalib_get_name,
+        idalib_get_next_fixup_ea, idalib_get_segm_base, idalib_get_sp_delta,
+        idalib_get_switch_info, idalib_getn_fchunk, idalib_print_insn_mnem, idalib_save_database,
+        idalib_set_func_end, idalib_set_func_start, idalib_set_name,
     };
 }
 

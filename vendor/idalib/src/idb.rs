@@ -599,23 +599,34 @@ pub struct EntryPointIter<'a> {
 }
 
 impl<'a> Iterator for EntryPointIter<'a> {
-    type Item = Address;
+    type Item = (usize, Address, String);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.limit {
             return None;
         }
 
-        let ordinal = unsafe { get_entry_ordinal(self.index) };
-        let addr = unsafe { get_entry(ordinal) };
+        let index = self.index;
+        self.index += 1;
+        let ordinal_raw = unsafe { get_entry_ordinal(index) };
+        let ordinal = usize::try_from(ordinal_raw.0).unwrap_or(0);
+        let addr = unsafe { get_entry(ordinal_raw) };
 
         // skip?
         if addr == BADADDR {
-            self.index += 1;
             return self.next();
         }
 
-        Some(addr.into())
+        let name =
+            unsafe { idalib_sys::ffix::idalib_entry_name(autocxx::c_ulonglong(ordinal as u64)) }
+                .unwrap_or_default();
+        let name = if name.is_empty() {
+            format!("entry_{ordinal}")
+        } else {
+            name
+        };
+
+        Some((ordinal, addr.into(), name))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

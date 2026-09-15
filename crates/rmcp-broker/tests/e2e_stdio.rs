@@ -48,11 +48,19 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 17, "expected 17 tools, got {names:?}");
+    assert_eq!(names.len(), 24, "expected 24 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
     assert!(names.contains(&"ida_installations".to_string()));
+    // #19 capability-gap tools
+    assert!(names.contains(&"ida_metadata".to_string()));
+    assert!(names.contains(&"ida_imports".to_string()));
+    assert!(names.contains(&"ida_fixups".to_string()));
+    assert!(names.contains(&"ida_filemap".to_string()));
+    assert!(names.contains(&"ida_func".to_string()));
+    assert!(names.contains(&"ida_hr".to_string()));
+    assert!(names.contains(&"ida_insn".to_string()));
 
     // open db (mock backend explicitly; default is idalib)
     let resp = client
