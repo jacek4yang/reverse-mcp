@@ -782,6 +782,35 @@ pub async fn tool_analyze(broker: &Broker, args: Value) -> Result<Value, McpErro
     Ok(json!({"db": db, "analysis": out}))
 }
 
+/// ida_deep - #10 deep analysis: recursive decompilation with type
+/// propagation (task=deep_function), bounded data-flow evidence
+/// (task=trace_dataflow), or prototype application (task=retype).
+pub async fn tool_deep(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let task = arg_str(&args, "task")
+        .unwrap_or("deep_function")
+        .to_string();
+    let method = match task.as_str() {
+        "deep_function" => "deep.function",
+        "trace_dataflow" => "deep.dataflow",
+        "retype" => "deep.retype",
+        other => {
+            return Err(McpError::invalid_params(
+                format!("unknown task '{other}' (deep_function|trace_dataflow|retype)"),
+                None,
+            ));
+        }
+    };
+    // Deep analysis may legitimately run longer than the default 2 min;
+    // the agent bounds it via timeout_ms (clamped 5s..30min broker-side).
+    let out = s
+        .call_with_timeout(method, args, std::time::Duration::from_secs(600))
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "deep": out}))
+}
+
 /// ida_evidence - #14 structured evidence search over the analysis index.
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries

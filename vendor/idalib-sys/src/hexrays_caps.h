@@ -45,6 +45,20 @@ struct LvarRowList {
   bool truncated = false;
 };
 
+struct CallRow {
+  uint64_t call_ea = 0;   // address of the cot_call expression
+  uint64_t target_ea = 0; // direct callee EA (BADADDR when indirect)
+  bool direct = false;    // callee resolved to a fixed EA
+  std::string target_name; // rendered callee expression text
+  std::vector<std::string> args; // rendered argument expressions
+  std::string ret_type;   // declared return type text (empty if unknown)
+};
+
+struct CallRowList {
+  std::vector<CallRow> rows;
+  bool truncated = false;
+};
+
 // ---- ctree: bounded typed node summaries ----
 
 namespace ctree_detail {
@@ -268,4 +282,170 @@ inline bool idalib_lvar_rename(cfunc_t *f, uint64_t var_defea, const char *new_n
   mlv.victim = victim;
   mlv.new_name = qstring(new_name);
   return modify_user_lvars(f->entry_ea, mlv);
+}
+
+// ---- deep analysis (#10): call sites, full prototype, prototype apply ----
+
+// Full function prototype: return type + per-argument type texts.
+struct ProtoRow {
+  std::string ret_type;
+  std::vector<std::string> arg_types; // "..." entries beyond max_args are dropped
+  bool truncated = false;
+  bool known = false; // false when the function type is not available
+};
+
+inline std::unique_ptr<ProtoRow> idalib_func_prototype(cfunc_t *f, size_t max_args) {
+  auto out = std::make_unique<ProtoRow>();
+  tinfo_t tif;
+  if (!f->get_func_type(&tif)) {
+    return out;
+  }
+  out->known = true;
+  qstring rt;
+  tinfo_t ret = tif.get_nth_arg(-1);
+  print_tinfo(&rt, nullptr, 0, 0, PRTYPE_1LINE | PRTYPE_TYPE | PRTYPE_SEMI, &ret, nullptr, nullptr);
+  out->ret_type = std::string(rt.c_str());
+  // get_func_details fills func_type_data_t with per-arg tinfo_t.
+  func_type_data_t fti;
+  if (tif.get_func_details(&fti)) {
+    for (size_t i = 0; i < fti.size(); i++) {
+      if (out->arg_types.size() >= max_args) {
+        out->truncated = true;
+        break;
+      }
+      qstring at;
+      print_tinfo(&at, nullptr, 0, 0, PRTYPE_1LINE | PRTYPE_TYPE | PRTYPE_SEMI,
+                  &fti[i].type, nullptr, nullptr);
+      out->arg_types.push_back(std::string(at.c_str()));
+    }
+  }
+  return out;
+}
+
+inline rust::String idalib_proto_ret_type(const ProtoRow &p) {
+  return rust::String(p.ret_type.c_str());
+}
+inline size_t idalib_proto_arg_count(const ProtoRow &p) {
+  return p.arg_types.size();
+}
+inline rust::String idalib_proto_arg_type(const ProtoRow &p, size_t i) {
+  return rust::String(p.arg_types[i].c_str());
+}
+inline bool idalib_proto_truncated(const ProtoRow &p) {
+  return p.truncated;
+}
+inline bool idalib_proto_known(const ProtoRow &p) {
+  return p.known;
+}
+
+// Bounded call-site walker: every cot_call expression becomes one row with
+// the rendered callee expression, direct-target EA (when resolvable) and
+// rendered argument texts (concrete ctree evidence, issue #10).
+namespace ctree_detail {
+
+struct CallCtx {
+  CallRowList *out;
+  size_t limit;
+};
+
+inline void collect_call(CallCtx &ctx, cexpr_t *e) {
+  if (ctx.out->rows.size() >= ctx.limit) {
+    ctx.out->truncated = true;
+    return;
+  }
+  CallRow row;
+  row.call_ea = (uint64_t)e->ea;
+  cexpr_t *callee = e->x;
+  if (callee != nullptr) {
+    if (callee->op == cot_obj) {
+      row.direct = true;
+      row.target_ea = (uint64_t)callee->obj_ea;
+    }
+    row.target_name = render_expr(callee);
+  }
+  if (e->a != nullptr) {
+    for (carg_t &arg : *e->a) {
+      if (row.args.size() >= 16) {
+        break;
+      }
+      row.args.push_back(render_expr(&arg));
+    }
+  }
+  ctx.out->rows.push_back(std::move(row));
+}
+
+struct BoundedCallVisitor : public ctree_parentee_t {
+  CallCtx &ctx;
+  explicit BoundedCallVisitor(CallCtx &c) : ctree_parentee_t(CV_FAST), ctx(c) {}
+
+  int idaapi visit_expr(cexpr_t *e) override {
+    if (e->op == cot_call) {
+      collect_call(ctx, e);
+      if (ctx.out->truncated) {
+        return 1;
+      }
+    }
+    return 0;
+  }
+};
+
+}  // namespace ctree_detail
+
+inline CallRowList *idalib_calls_walk(cfunc_t *f, size_t limit) {
+  auto *out = new CallRowList();
+  ctree_detail::CallCtx ctx{out, limit};
+  ctree_detail::BoundedCallVisitor v(ctx);
+  v.apply_to(&f->body, nullptr);
+  return out;
+}
+
+inline void idalib_call_rows_free(CallRowList *rows) { delete rows; }
+inline size_t idalib_call_rows_size(const CallRowList *rows) {
+  return rows->rows.size();
+}
+inline bool idalib_call_rows_truncated(const CallRowList *rows) {
+  return rows->truncated;
+}
+inline uint64_t idalib_call_row_call_ea(const CallRowList *rows, size_t i) {
+  return rows->rows[i].call_ea;
+}
+inline uint64_t idalib_call_row_target_ea(const CallRowList *rows, size_t i) {
+  return rows->rows[i].target_ea;
+}
+inline bool idalib_call_row_direct(const CallRowList *rows, size_t i) {
+  return rows->rows[i].direct;
+}
+inline rust::String idalib_call_row_target_name(const CallRowList *rows, size_t i) {
+  return rust::String(rows->rows[i].target_name.c_str());
+}
+inline rust::String idalib_call_row_arg(const CallRowList *rows, size_t i, size_t j) {
+  return rust::String(rows->rows[i].args[j].c_str());
+}
+inline size_t idalib_call_row_arg_count(const CallRowList *rows, size_t i) {
+  return rows->rows[i].args.size();
+}
+
+// Apply a prototype to the function at ea by parsing a C declaration like
+// "int __usercall f(int, char *)" (name is ignored; PT_NDC keeps it raw).
+// Returns false on parse failure or when apply_tinfo rejects the type.
+inline bool idalib_apply_prototype(cfunc_t *f, const char *decl) {
+  tinfo_t tif;
+  qstring name;
+  if (!parse_decl(&tif, &name, nullptr, decl, PT_SIL | PT_NDC | PT_TYP)) {
+    return false;
+  }
+  return apply_tinfo(f->entry_ea, tif, TINFO_DEFINITE);
+}
+
+// Current prototype of the function at f as a printable one-line declaration
+// (empty string when the type is unknown). Used to compare before/after and
+// to feed the propagation loop.
+inline rust::String idalib_prototype_text(cfunc_t *f) {
+  tinfo_t tif;
+  if (!f->get_func_type(&tif)) {
+    return rust::String();
+  }
+  qstring out;
+  print_tinfo(&out, nullptr, 0, 0, PRTYPE_1LINE | PRTYPE_TYPE | PRTYPE_SEMI, &tif, nullptr, nullptr);
+  return rust::String(out.c_str());
 }

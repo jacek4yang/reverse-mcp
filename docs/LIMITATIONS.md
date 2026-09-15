@@ -26,7 +26,7 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 28 tools.
+- MCP stdio transport, 29 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -74,6 +74,20 @@ under "Shipped" does not work yet.
   (workflow, request, revision) with `cached`/`cache_hits` reported and the
   whole cache invalidated by any successful mutation; `detail=summary` keeps
   decompilation out unless explicitly requested (`detail=full`).
+- #10 deep analysis (real-IDA verified): `ida_deep` runs recursive
+  decompilation with type propagation (`deep_function`), bounded data-flow
+  evidence (`trace_dataflow`, `confirmed` vs `heuristic` per call site) and
+  prototype application (`retype`). Efficiency model: decompilation runs
+  exactly once per function per run (callees-first walk); propagation is
+  dirty-driven (only callers of changed functions are re-checked); unchanged
+  repeats are served from the revision-keyed cache with no decompilation.
+  Robustness: visited-set cycle guards (mutual recursion terminates),
+  strict budgets (`depth`, `max_functions`, `max_iterations`, `max_calls`)
+  plus an agent-settable wall-clock `timeout_ms` (broker clamps 5s..30min,
+  worker enforces 1s..30min) that stops the run and returns partial results
+  with `budget_hit: true`. The engine does not yet implement full ctree
+  slicing or virtual-call target resolution; indirect-call evidence is
+  reported as heuristic, never confirmed.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 

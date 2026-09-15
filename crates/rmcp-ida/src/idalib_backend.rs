@@ -1058,6 +1058,86 @@ impl IdaBackend for IdaLibBackend {
         Ok(md["md5"].as_str().unwrap_or_default().to_string())
     }
 
+    fn deep_function_info(&self, ea: u64, max_calls: usize) -> Result<Value> {
+        let idb = self.idb()?;
+        if !idb.decompiler_available() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays decompiler not available".into(),
+            });
+        }
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let cf = idb.decompile(&f).map_err(err)?;
+        let cfptr = cf.inner_ptr();
+
+        let proto = idalib::caps::func_prototype(cfptr, 16);
+        let (call_rows, calls_truncated) = idalib::caps::call_rows(cfptr, max_calls);
+        let calls: Vec<Value> = call_rows
+            .iter()
+            .map(|c| {
+                let mut v = json!({
+                    "call_ea": format!("{:#x}", c.call_ea),
+                    "direct": c.direct,
+                    "target_name": c.target_name,
+                    "args": c.args,
+                });
+                if c.direct {
+                    v["target_ea"] = json!(format!("{:#x}", c.target_ea));
+                }
+                v
+            })
+            .collect();
+
+        Ok(json!({
+            "ea": f.start_address(),
+            "name": f.name().unwrap_or_default(),
+            "prototype": {
+                "known": proto.known,
+                "ret_type": proto.ret_type,
+                "arg_types": proto.arg_types,
+                "truncated": proto.truncated,
+            },
+            "calls": calls,
+            "calls_truncated": calls_truncated,
+        }))
+    }
+
+    fn deep_apply_prototype(&mut self, ea: u64, decl: &str) -> Result<MutationOutcome> {
+        let idb = self.idb()?;
+        if !idb.decompiler_available() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays decompiler not available".into(),
+            });
+        }
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let func_ea = f.start_address();
+        let func_name = f.name().unwrap_or_default();
+        let cf = idb.decompile(&f).map_err(err)?;
+        let before = idalib::caps::prototype_text(cf.inner_ptr());
+        let ok = idalib::caps::apply_prototype(cf.inner_ptr(), decl);
+        if !ok {
+            return Err(Error::Worker(format!(
+                "prototype apply failed for {func_ea:#x}: bad declaration or rejected type"
+            )));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({
+                "ea": func_ea,
+                "name": func_name,
+                "decl": decl,
+                "before": before,
+            }),
+        })
+    }
+
     fn build_index(&self) -> Result<(rmcp_core::analysis_index::AnalysisIndex, String)> {
         use rmcp_core::analysis_index::{AnalysisIndex, FunctionFacts, IndexedString};
         let md5 = self.input_md5()?;

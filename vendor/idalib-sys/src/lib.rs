@@ -725,6 +725,8 @@ pub mod ffix {
         // Row lists are opaque C++ containers accessed via scalar accessors.
         type CtreeRowList;
         type LvarRowList;
+        type CallRowList;
+        type ProtoRow;
 
         unsafe fn idalib_ctree_walk(f: *mut cfunc_t, limit: usize) -> *mut CtreeRowList;
         unsafe fn idalib_ctree_rows_free(rows: *mut CtreeRowList);
@@ -755,6 +757,26 @@ pub mod ffix {
             var_defea: u64,
             new_name: *const c_char,
         ) -> bool;
+
+        // ---- deep analysis (#10) ----
+        unsafe fn idalib_func_prototype(f: *mut cfunc_t, max_args: usize) -> UniquePtr<ProtoRow>;
+        unsafe fn idalib_proto_ret_type(p: &ProtoRow) -> String;
+        unsafe fn idalib_proto_arg_count(p: &ProtoRow) -> usize;
+        unsafe fn idalib_proto_arg_type(p: &ProtoRow, i: usize) -> String;
+        unsafe fn idalib_proto_truncated(p: &ProtoRow) -> bool;
+        unsafe fn idalib_proto_known(p: &ProtoRow) -> bool;
+        unsafe fn idalib_calls_walk(f: *mut cfunc_t, limit: usize) -> *mut CallRowList;
+        unsafe fn idalib_call_rows_free(rows: *mut CallRowList);
+        unsafe fn idalib_call_rows_size(rows: *const CallRowList) -> usize;
+        unsafe fn idalib_call_rows_truncated(rows: *const CallRowList) -> bool;
+        unsafe fn idalib_call_row_call_ea(rows: *const CallRowList, i: usize) -> u64;
+        unsafe fn idalib_call_row_target_ea(rows: *const CallRowList, i: usize) -> u64;
+        unsafe fn idalib_call_row_direct(rows: *const CallRowList, i: usize) -> bool;
+        unsafe fn idalib_call_row_target_name(rows: *const CallRowList, i: usize) -> String;
+        unsafe fn idalib_call_row_arg(rows: *const CallRowList, i: usize, j: usize) -> String;
+        unsafe fn idalib_call_row_arg_count(rows: *const CallRowList, i: usize) -> usize;
+        unsafe fn idalib_apply_prototype(f: *mut cfunc_t, decl: *const c_char) -> bool;
+        unsafe fn idalib_prototype_text(f: *mut cfunc_t) -> String;
 
         type plugin_t = super::ffi::plugin_t;
 

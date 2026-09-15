@@ -53,7 +53,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 28, "expected 28 tools, got {names:?}");
+    assert_eq!(names.len(), 29, "expected 29 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -70,6 +70,8 @@ async fn e2e_stdio_mock_wired() {
     assert!(names.contains(&"ida_health".to_string()));
     // #16 mutation layer
     assert!(names.contains(&"ida_mutation".to_string()));
+    // #10 deep analysis
+    assert!(names.contains(&"ida_deep".to_string()));
 
     // ida_health: must succeed on an IDA-less machine (CI) and report a
     // structured diagnosis (worker probe + at least discovery shape).

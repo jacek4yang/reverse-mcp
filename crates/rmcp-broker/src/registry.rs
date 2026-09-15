@@ -119,6 +119,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["query", "build", "status"]}, "query": {"type": "object", "properties": {"all": {"type": "array", "items": {"type": "object"}}}, "limit": {"type": "integer", "maximum": 1000}}, "limit": {"type": "integer", "maximum": 1000}}}),
         },
         ToolDef {
+            name: "ida_deep",
+            description: "Deep analysis (#10): recursive decompilation with type propagation and bounded data-flow. task=deep_function: walks direct callees first (post-order), applies recovered prototypes, re-decompiles improved callers and reports a convergence trace (iteration N: k type changes ... 0 -> converged). task=trace_dataflow: source->sink evidence for a target function across callers/callees with concrete call-site EAs; confidence=confirmed for direct calls, heuristic for indirect. task=retype: apply a C prototype declaration (mutation, invalidates caches). Budgets: depth, max_functions, max_iterations, max_calls. Repeats on an unchanged DB are served from the revision-keyed cache (cached=true).",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["deep_function", "trace_dataflow", "retype"]}, "target": {"type": "string", "description": "function ea or name (deep_function/trace_dataflow)"}, "ea": {"type": "string", "description": "function ea (retype)"}, "decl": {"type": "string", "description": "C prototype declaration (retype)"}, "direction": {"type": "string", "enum": ["forward", "backward", "both"]}, "depth": {"type": "integer"}, "max_functions": {"type": "integer"}, "max_iterations": {"type": "integer"}, "max_calls": {"type": "integer"}}, "required": ["task"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -190,6 +195,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_health" => tools::tool_health(broker, args).await,
         "ida_evidence" => tools::tool_evidence(broker, args).await,
         "ida_analyze" => tools::tool_analyze(broker, args).await,
+        "ida_deep" => tools::tool_deep(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

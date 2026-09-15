@@ -6,6 +6,7 @@ use rmcp_core::error::Error;
 use rmcp_core::protocol::{WorkerRequest, WorkerResponse};
 use serde_json::{Value, json};
 
+use crate::deep;
 use crate::plan;
 use crate::state::WorkerState;
 use crate::workflow;
@@ -27,6 +28,7 @@ const MUTATING_METHODS: &[&str] = &[
     "func.delete",
     "func.resize",
     "hr.lvar_rename",
+    "deep.retype",
     "plan.apply",
     "snapshot.restore",
     "analyze_wait",
@@ -550,6 +552,114 @@ fn dispatch(
             }
             let (idx, _md5) = state.index.as_ref().expect("just built").clone();
             let result = workflow::run(need_backend(state)?, &idx, &req)?;
+            state.workflow_cache.put(key, result.clone());
+            Ok(json!({
+                "cached": false,
+                "cache_hits": state.workflow_cache.hits,
+                "result": result,
+            }))
+        }
+        // ---- #10: deep analysis (recursive decompile, type propagation,
+        // dataflow). Uses the same workflow cache as #8: identical requests
+        // on an unchanged revision are served without re-walking, and any
+        // mutation invalidates it.
+        "deep.function" => {
+            let root = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let budgets = deep::budgets_from(&params);
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            // Resume runs continue a specific partial walk and bypass the
+            // result cache (they must do fresh work); fresh runs use the
+            // revision-keyed cache so unchanged repeats are free.
+            let resume = params.get("resume_from").filter(|v| v.is_object());
+            let key = (
+                "deep_function".to_string(),
+                format!("{root:#x}|{budgets:?}"),
+                current_rev,
+            );
+            if resume.is_none()
+                && let Some(cached) = state.workflow_cache.get(&key)
+            {
+                return Ok(json!({
+                    "cached": true,
+                    "cache_hits": state.workflow_cache.hits,
+                    "result": cached,
+                }));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            let result = deep::deep_function(need_backend(state)?, &idx, root, &budgets, resume)?;
+            if resume.is_none() {
+                let key = (
+                    "deep_function".to_string(),
+                    format!("{root:#x}|{budgets:?}"),
+                    current_rev,
+                );
+                state.workflow_cache.put(key, result.clone());
+            }
+            Ok(json!({
+                "cached": false,
+                "cache_hits": state.workflow_cache.hits,
+                "result": result,
+            }))
+        }
+        "deep.retype" => {
+            let ea = ea_param(&params, "ea")?;
+            let decl = params
+                .get("decl")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Worker("missing decl".into()))?;
+            check_revision(&params, need_backend(state)?)?;
+            let out = need_backend(state)?.deep_apply_prototype(ea, decl)?;
+            plan::record_audit(&mut state.audit, "deep.retype", ea, &out);
+            state.workflow_cache.invalidate_all();
+            serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
+        }
+        "deep.dataflow" => {
+            let target = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let direction = params
+                .get("direction")
+                .and_then(|v| v.as_str())
+                .unwrap_or("both")
+                .to_string();
+            if !matches!(direction.as_str(), "forward" | "backward" | "both") {
+                return Err(Error::Worker(format!(
+                    "bad direction '{direction}' (forward|backward|both)"
+                )));
+            }
+            let budgets = deep::budgets_from(&params);
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let key = (
+                "deep_dataflow".to_string(),
+                format!("{target:#x}|{direction}|{budgets:?}"),
+                current_rev,
+            );
+            if let Some(cached) = state.workflow_cache.get(&key) {
+                return Ok(json!({
+                    "cached": true,
+                    "cache_hits": state.workflow_cache.hits,
+                    "result": cached,
+                }));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            let result =
+                deep::trace_dataflow(need_backend(state)?, &idx, target, &direction, &budgets)?;
             state.workflow_cache.put(key, result.clone());
             Ok(json!({
                 "cached": false,
