@@ -58,7 +58,13 @@ fn decompile_requires_args() {
 #[test]
 fn doctor_reports_backend_and_toolchain_sections() {
     let out = cli().args(["doctor"]).output().expect("run doctor");
-    assert!(out.status.success(), "doctor should exit 0");
+    // Exit 0 = healthy machine; exit 1 = "PROBLEMS FOUND" (expected on CI,
+    // where no IDA install exists). Both are valid doctor outcomes.
+    assert!(
+        out.status.success() || out.status.code() == Some(1),
+        "doctor must exit 0 or 1; got {:?}",
+        out.status.code()
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     // Versioned backend manifest: pinned SDK facts for the one verified
     // backend, printed verbatim from the registry.
