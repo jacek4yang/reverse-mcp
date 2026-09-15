@@ -17,3 +17,20 @@ std::size_t idalib_get_bytes(ea_t ea, rust::Vec<rust::u8> &buf) {
     return 0;
   }
 }
+
+// ---- #16: patching ----
+// patch_bytes (unlike put_bytes) records the change so it shows up in
+// visit_patched_bytes and is included in undo records.
+bool idalib_patch_bytes(ea_t ea, const rust::Vec<rust::u8> &bytes) {
+  if (bytes.empty()) {
+    return false;
+  }
+  patch_bytes(ea, bytes.data(), bytes.size());
+  return true;
+}
+
+// Original (unpatched) byte of the input file at ea — lets the audit trail
+// record what a patch overwrote and lets agents diff before/after. Returns
+// the raw item value; per SDK semantics "no original value" is not
+// distinguishable, so callers treat it as a best-effort record.
+std::uint64_t idalib_get_original_byte(ea_t ea) { return get_original_byte(ea); }

@@ -7,8 +7,13 @@ use tokio::io::duplex;
 use rmcp::model::{CallToolRequestParams, ClientInfo, Implementation};
 use rmcp::transport::async_rw::AsyncRwTransport;
 
+/// The DB handle counter is process-global, so tests that open databases must
+/// not run in parallel (otherwise one test sees db2 when it expects db1).
+static DB_COUNTER_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn e2e_stdio_mock_wired() {
+    let _guard = DB_COUNTER_LOCK.lock().await;
     // Single-exe architecture: no separate worker binary to build.
     // Pair 1: server-read <- client-write
     let (server_read, client_write) = duplex(64 * 1024);
@@ -48,7 +53,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 25, "expected 25 tools, got {names:?}");
+    assert_eq!(names.len(), 26, "expected 26 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -63,6 +68,8 @@ async fn e2e_stdio_mock_wired() {
     assert!(names.contains(&"ida_insn".to_string()));
     // #28 self-diagnosis tool
     assert!(names.contains(&"ida_health".to_string()));
+    // #16 mutation layer
+    assert!(names.contains(&"ida_mutation".to_string()));
 
     // ida_health: must succeed on an IDA-less machine (CI) and report a
     // structured diagnosis (worker probe + at least discovery shape).
@@ -183,6 +190,204 @@ async fn e2e_stdio_mock_wired() {
         .expect("close");
     let text = first_text(&resp);
     assert!(text.contains("closed"), "close response: {text}");
+
+    let _ = client.cancel().await;
+    server_task.abort();
+}
+
+/// #16 mutation layer end to end over MCP stdio: plan -> apply -> audit ->
+/// snapshot/rollback, on the mock backend.
+#[tokio::test]
+async fn e2e_stdio_mutation_layer() {
+    let _guard = DB_COUNTER_LOCK.lock().await;
+    let (server_read, client_write) = duplex(64 * 1024);
+    let (client_read, server_write) = duplex(64 * 1024);
+
+    let broker = rmcp_broker::Broker::new(rmcp_core::config::Config::default());
+    let server_task = tokio::spawn(async move {
+        use rmcp::ServiceExt;
+        let service = rmcp_broker::ReverseMcpServer::new(broker);
+        let transport = AsyncRwTransport::new(server_read, server_write);
+        let running = service.serve(transport).await?;
+        running.waiting().await?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
+    });
+
+    let client_info = rmcp::model::ClientInfo::default();
+    let client = rmcp::service::serve_client(client_info, (client_read, client_write))
+        .await
+        .expect("client init");
+
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_db").with_arguments(
+                json!({"action": "open", "path": "fixture.i64", "backend": "mock"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("open");
+    let open_text = first_text(&resp);
+    // Handle names are process-global (db1, db2, ...); parse ours.
+    let handle: String = open_text
+        .split("\"db\": \"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .unwrap_or("db1")
+        .to_string();
+
+    // plan: validates + previews, no revision bump
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_mutation").with_arguments(
+                json!({
+                    "db": handle,
+                    "action": "plan",
+                    "operations": [
+                        {"ea": "0x401100", "kind": "rename", "name": "helper_planned"},
+                        {"ea": "0x401000", "kind": "comment", "comment": "planned note"}
+                    ]
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("plan");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"operations\": 2") || text.contains("\"operations\":2"),
+        "plan response: {text}"
+    );
+
+    // apply with a stale revision must be rejected before any op runs
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_mutation").with_arguments(
+                json!({
+                    "db": handle,
+                    "action": "apply",
+                    "expected_revision": 99,
+                    "operations": [
+                        {"ea": "0x401100", "kind": "rename", "name": "too_late"}
+                    ]
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("stale apply");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("revision_conflict"),
+        "stale apply must be rejected: {text}"
+    );
+
+    // apply valid plan
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_mutation").with_arguments(
+                json!({
+                    "db": handle,
+                    "action": "apply",
+                    "operations": [
+                        {"ea": "0x401100", "kind": "rename", "name": "helper_planned"},
+                        {"ea": "0x401000", "kind": "comment", "comment": "planned note"}
+                    ]
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("apply");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"applied\": 2") || text.contains("\"applied\":2"),
+        "apply response: {text}"
+    );
+    assert!(
+        text.contains("\"partial\": false"),
+        "apply response: {text}"
+    );
+
+    // audit trail shows both ops
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_mutation").with_arguments(
+                json!({"db": handle, "action": "audit"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("audit");
+    let text = first_text(&resp);
+    assert!(text.contains("rename"), "audit response: {text}");
+    assert!(text.contains("comment"), "audit response: {text}");
+
+    // snapshot -> mutate -> rollback restores the pre-mutation name
+    let _ = client
+        .call_tool(
+            CallToolRequestParams::new("ida_mutation").with_arguments(
+                json!({"db": handle, "action": "snapshot"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("snapshot");
+    let _ = client
+        .call_tool(
+            CallToolRequestParams::new("ida_edit").with_arguments(
+                json!({"db": handle, "ea": "0x401100", "rename": "after_snapshot"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("mutate after snapshot");
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_mutation").with_arguments(
+                json!({"db": handle, "action": "rollback"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("rollback");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"restored\": true") || text.contains("\"restored\":true"),
+        "rollback response: {text}"
+    );
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_functions").with_arguments(
+                json!({"db": handle, "limit": 50})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("functions after rollback");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("helper_planned"),
+        "rollback must restore the planned name: {text}"
+    );
 
     let _ = client.cancel().await;
     server_task.abort();

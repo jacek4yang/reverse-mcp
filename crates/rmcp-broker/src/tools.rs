@@ -689,6 +689,62 @@ pub async fn tool_installations(broker: &Broker, _args: Value) -> Result<Value, 
     }))
 }
 
+/// ida_mutation — #16 transaction-like mutation layer: plan (validate +
+/// preview without changing anything), apply (whole-plan revision guard,
+/// sequential execution, partial-outcome reporting), audit (bounded trail of
+/// applied mutations with old/new state), snapshot/restore (IDB rollback).
+pub async fn tool_mutation(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = match arg_str(&args, "action").unwrap_or("plan") {
+        "plan" => {
+            let operations = args
+                .get("operations")
+                .cloned()
+                .ok_or_else(|| mcp_code("invalid_args", "plan requires 'operations'"))?;
+            s.call(
+                "plan.mutations",
+                json!({"operations": operations, "expected_revision": args.get("expected_revision")}),
+            )
+            .await
+            .map_err(err_from)?
+        }
+        "apply" => {
+            let operations = args
+                .get("operations")
+                .cloned()
+                .ok_or_else(|| mcp_code("invalid_args", "apply requires 'operations'"))?;
+            s.call(
+                "plan.apply",
+                json!({"operations": operations, "expected_revision": args.get("expected_revision")}),
+            )
+            .await
+            .map_err(err_from)?
+        }
+        "audit" => {
+            let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100);
+            s.call("mutation.audit", json!({"limit": limit}))
+                .await
+                .map_err(err_from)?
+        }
+        "snapshot" => s
+            .call("snapshot.create", json!({}))
+            .await
+            .map_err(err_from)?,
+        "rollback" => s
+            .call("snapshot.restore", json!({}))
+            .await
+            .map_err(err_from)?,
+        other => {
+            return Err(mcp_code(
+                "invalid_args",
+                &format!("unknown mutation action '{other}' (plan|apply|audit|snapshot|rollback)"),
+            ));
+        }
+    };
+    Ok(json!({"db": db, "mutation": out}))
+}
+
 /// ida_health — self-report that works even when no IDA install is found.
 /// Surfaces discovery results, runtime-DLL presence, worker-exe probe and
 /// idalib-feature availability so agents can self-diagnose instead of guessing.

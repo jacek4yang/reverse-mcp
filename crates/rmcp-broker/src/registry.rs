@@ -104,6 +104,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object"}),
         },
         ToolDef {
+            name: "ida_mutation",
+            description: "Transaction-like mutation layer: action=plan (validate+preview ops without changing anything, whole-plan revision guard), apply (sequential execution with per-op results and partial-outcome reporting), audit (bounded trail of applied mutations with old/new state), snapshot (IDB restore point), rollback (undo to last snapshot). Operations: rename, comment, patch_bytes (hex), func.create, func.delete, set_type with {ea, kind, ...}.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["plan", "apply", "audit", "snapshot", "rollback"]}, "operations": {"type": "array", "items": {"type": "object", "properties": {"ea": {"type": "string"}, "kind": {"type": "string", "enum": ["rename", "comment", "patch_bytes", "func.create", "func.delete", "set_type"]}, "name": {"type": "string"}, "comment": {"type": "string"}, "repeatable": {"type": "boolean"}, "hex": {"type": "string"}, "end": {"type": "string"}, "decl": {"type": "string"}}, "required": ["ea", "kind"]}}, "expected_revision": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["action"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -180,6 +185,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_func" => tools::tool_func(broker, args).await,
         "ida_hr" => tools::tool_hr(broker, args).await,
         "ida_insn" => tools::tool_insn(broker, args).await,
+        "ida_mutation" => tools::tool_mutation(broker, args).await,
         other => Err(rmcp::ErrorData::invalid_params(
             format!("unknown tool '{other}'"),
             None,
