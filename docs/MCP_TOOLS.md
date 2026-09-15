@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-26 tools. Every list/search/graph result is bounded; oversized responses spill
+27 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -154,6 +154,21 @@ results or errors.
 ### ida_result
 Access spilled results: `read` (by `handle` or `text` search), `metadata`,
 `find`, `release`.
+
+### ida_evidence
+Structured evidence search over a database-wide, revision-aware analysis
+index (#14). `action=query` runs a predicate tree: `import`, `string_contains`,
+`name_contains`, `constant`, `has_indirect_calls`, `callee_matches`,
+`caller_matches`, `reachable_from` (root_ea + levels), `all`/`any`/`not`
+combinators. Example: `{"all":[{"import":"VirtualAlloc"},
+{"has_indirect_calls":{"min":1}}]}`. Every hit lists concrete matched
+evidence (`matched: ["import:VirtualAlloc", "indirect_calls:2", ...]`); the
+score is the evidence count, never an opaque number. `action=build` builds
+and persists the index under the reverse-mcp cache dir (never IDA's own
+directories; keyed by input md5 + revision + schema version; corrupt or
+stale cache fails safely and rebuilds). `action=status` reports identity and
+whether the index is current — any mutation bumps the revision and
+invalidates it.
 
 ## Resources (read-only context)
 

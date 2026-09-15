@@ -804,3 +804,105 @@ async fn real_ida_issue16_mutation_layer() {
     drop(s2);
     pool.close(&handle2).await.expect("close pool 2");
 }
+
+/// #14 acceptance, real IDA: index builds over imports/strings/functions/
+/// constants; queries return evidence-bearing hits; the built index is
+/// reused (status.current=true) until a mutation bumps the revision.
+#[tokio::test]
+#[ignore]
+async fn real_ida_issue14_evidence_index() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-14.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let fresh_i64 = std::path::PathBuf::from(format!("{}.i64", dst.display()));
+    let _ = std::fs::remove_file(&fresh_i64);
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    // Build: covers functions, strings, imports, constants.
+    let built = s.call("index.build", json!({})).await.expect("index.build");
+    assert!(built["functions"].as_u64().unwrap() > 0, "build: {built}");
+
+    // Query 1: strings predicate — the fixture has "usage: simple".
+    let hits = s
+        .call(
+            "index.query",
+            json!({"query": {"all": [{"string_contains": "usage"}]}}),
+        )
+        .await
+        .expect("string query");
+    assert!(hits["count"].as_u64().unwrap() >= 1, "hits: {hits}");
+    let first = &hits["hits"][0];
+    assert!(
+        first["matched"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m.as_str().unwrap_or("").starts_with("string:")),
+        "hit must carry string evidence: {first}"
+    );
+
+    // Query 2: constants predicate on a real constant from the fixture.
+    // Entry-point EA works as a data anchor; use name query for determinism.
+    let hits2 = s
+        .call(
+            "index.query",
+            json!({"query": {"all": [{"name_contains": "main"}], "limit": 5}}),
+        )
+        .await
+        .expect("name query");
+    assert!(hits2["count"].as_u64().unwrap() >= 1, "hits2: {hits2}");
+
+    // Query 3: import predicate — simple.exe imports from the CRT; search a
+    // common import substring. Even zero hits must be a bounded response.
+    let hits3 = s
+        .call(
+            "index.query",
+            json!({"query": {"all": [{"import": "kernel32"}], "limit": 10}}),
+        )
+        .await
+        .expect("import query");
+    assert!(hits3["count"].as_u64().unwrap() <= 10);
+
+    // Reuse: status.current == true right after build (no rescan needed).
+    let status = s.call("index.status", json!({})).await.expect("status");
+    assert_eq!(status["current"], true, "status: {status}");
+    assert_eq!(
+        status["md5"],
+        built
+            .get("binary_md5")
+            .unwrap_or(&serde_json::Value::Null)
+            .clone()
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_default(),
+        "md5 identity"
+    );
+
+    // A mutation bumps the revision -> index must be invalidated (current=false).
+    let rev = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let md = s.call("db.metadata", json!({})).await.expect("metadata");
+    let entry_ea = md["entries"][0]["ea"].as_u64().unwrap();
+    let _ = s
+        .call(
+            "rename",
+            json!({"ea": format!("{entry_ea:#x}"), "name": "issue14_renamed", "expected_revision": rev}),
+        )
+        .await
+        .expect("rename");
+    let status2 = s.call("index.status", json!({})).await.expect("status2");
+    assert_eq!(
+        status2["current"], false,
+        "mutation must invalidate index: {status2}"
+    );
+
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}

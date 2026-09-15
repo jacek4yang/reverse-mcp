@@ -53,7 +53,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 26, "expected 26 tools, got {names:?}");
+    assert_eq!(names.len(), 27, "expected 27 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -520,6 +520,38 @@ async fn e2e_stdio_resources_prompts() {
     assert!(
         prompt_text.contains("0x401200") && prompt_text.contains("ida_decompile"),
         "prompt must embed the ea and workflow: {prompt_text}"
+    );
+
+    // ida_evidence: build + query over the mock backend
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_evidence").with_arguments(
+                json!({"db": handle, "action": "build"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("evidence build");
+    let text = first_text(&resp);
+    assert!(text.contains("\"functions\""), "build: {text}");
+
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_evidence").with_arguments(
+                json!({"db": handle, "query": {"all": [{"name_contains": "main"}]}})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("evidence query");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"matched\""),
+        "query must carry evidence: {text}"
     );
 
     // capabilities tool exposes discovery info

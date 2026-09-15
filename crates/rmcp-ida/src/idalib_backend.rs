@@ -1052,6 +1052,162 @@ impl IdaBackend for IdaLibBackend {
         let dir = std::env::var("IDAUSR").unwrap_or_default();
         Ok(json!({"plugins_dir": dir, "note": "enumerate via filesystem"}))
     }
+
+    fn input_md5(&self) -> Result<String> {
+        let md = self.db_metadata()?;
+        Ok(md["md5"].as_str().unwrap_or_default().to_string())
+    }
+
+    fn build_index(&self) -> Result<(rmcp_core::analysis_index::AnalysisIndex, String)> {
+        use rmcp_core::analysis_index::{AnalysisIndex, FunctionFacts, IndexedString};
+        let md5 = self.input_md5()?;
+        let idb = self.idb()?;
+        let mut idx = AnalysisIndex {
+            schema_version: rmcp_core::analysis_index::INDEX_SCHEMA_VERSION,
+            binary_md5: md5.clone(),
+            revision: self.revision,
+            functions: Default::default(),
+            strings: Default::default(),
+        };
+
+        // Strings first: ea -> text, so functions can pick up references.
+        let string_list = idb.strings();
+        let mut string_eas: Vec<(u64, String)> = Vec::new();
+        for (ea, value) in string_list.iter() {
+            string_eas.push((ea, value));
+        }
+
+        for (_id, f) in idb.functions() {
+            let start = f.start_address().into();
+            let end = f.end_address().into();
+            let name = unsafe { idalib::ffi::backend::idalib_get_name(into_ea(start)) };
+            let mut facts = FunctionFacts {
+                ea_start: start,
+                ea_end: end,
+                name,
+                size: end.saturating_sub(start),
+                ..Default::default()
+            };
+
+            // Walk instruction heads inside the function.
+            let mut ea = start;
+            let mut steps = 0usize;
+            while ea < end && steps < 200_000 {
+                steps += 1;
+                let Some(insn) = idb.insn_at(ea) else { break };
+                if insn.is_call() {
+                    // Call target: first operand's address/value.
+                    for i in 0..insn.operand_count() {
+                        if let Some(op) = insn.operand(i) {
+                            if let Some(target) = op.addr() {
+                                let t: u64 = target.into();
+                                if let Some(tf) = idb.function_at(target) {
+                                    let tname = unsafe {
+                                        idalib::ffi::backend::idalib_get_name(into_ea(
+                                            tf.start_address().into(),
+                                        ))
+                                    };
+                                    // Import thunks carry the import name.
+                                    facts.callees.push(tf.start_address().into());
+                                    if tname.starts_with("j_") || tname.starts_with("__imp_") {
+                                        facts.imports.push(
+                                            tname
+                                                .trim_start_matches("j_")
+                                                .trim_start_matches("__imp_")
+                                                .to_string(),
+                                        );
+                                    }
+                                    let _ = t;
+                                }
+                                break;
+                            }
+                            if let Some(v) = op.value() {
+                                if v >= 0x10000 {
+                                    facts.constants.push(v);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                } else if insn.is_indirect_jump() {
+                    facts.indirect_calls += 1;
+                } else {
+                    for i in 0..insn.operand_count() {
+                        if let Some(op) = insn.operand(i) {
+                            if let Some(v) = op.value() {
+                                if v >= 0x10000 && facts.constants.last() != Some(&v) {
+                                    facts.constants.push(v);
+                                }
+                            }
+                            if let Some(t) = op.addr() {
+                                facts.globals.push(t.into());
+                            }
+                        }
+                    }
+                }
+                // Data xrefs from this instruction that land on strings.
+                if let Some(first) = idb.first_xref_from(ea.into(), XRefQuery::ALL) {
+                    let mut cur = Some(first);
+                    while let Some(x) = cur {
+                        let to: u64 = x.to().into();
+                        if let Some((_, text)) = string_eas.iter().find(|(sea, _)| *sea == to) {
+                            if !facts.strings.contains(text) {
+                                facts.strings.push(text.clone());
+                            }
+                        } else {
+                            facts.globals.push(to);
+                        }
+                        cur = x.next_from();
+                    }
+                }
+                ea += insn.len() as u64;
+            }
+
+            facts.constants.sort_unstable();
+            facts.constants.dedup();
+            facts.globals.sort_unstable();
+            facts.globals.dedup();
+            facts.imports.sort_unstable();
+            facts.imports.dedup();
+            idx.functions.insert(start, facts);
+        }
+
+        // String reference lists: which functions reference each string.
+        let fn_list: Vec<(u64, Vec<u64>)> = idx
+            .functions
+            .iter()
+            .map(|(ea, f)| (*ea, f.globals.clone()))
+            .collect();
+        for (sea, text) in string_eas {
+            let mut refs = Vec::new();
+            for (fea, globals) in &fn_list {
+                if globals.contains(&sea) {
+                    refs.push(*fea);
+                }
+            }
+            if !refs.is_empty() {
+                idx.strings.push(IndexedString {
+                    ea: sea,
+                    text,
+                    refs,
+                });
+            }
+        }
+
+        // Caller lists from callee edges.
+        let edges: Vec<(u64, u64)> = idx
+            .functions
+            .iter()
+            .flat_map(|(ea, f)| f.callees.iter().map(move |c| (*ea, *c)))
+            .collect();
+        for (caller, callee) in edges {
+            if let Some(cf) = idx.functions.get_mut(&callee) {
+                cf.callers.push(caller);
+            }
+        }
+
+        Ok((idx, md5))
+    }
 }
 
 /// Raw `func_t*` for the function starting at `ea` (for cap shims that the
