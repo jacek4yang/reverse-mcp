@@ -130,6 +130,20 @@ cargo build --release -p reverse-mcp --features idalib
 }
 ```
 
+### Recommended agent workflow (minimal token usage)
+
+1. Open once: `ida_db action=open` -> keep the returned `db1`-style handle.
+2. Pull context via resources (`ida://db/{id}/metadata|segments|imports|info`)
+   instead of tool calls where possible.
+3. Analyze with `ida_batch` for independent reads; `ida_capabilities` tells
+   you what the backend supports and the output budgets.
+4. Mutate through `ida_mutation`: `plan` -> review -> `apply` with
+   `expected_revision`; take a `snapshot` before byte patches; verify with
+   `audit`.
+5. Large responses arrive as `result_ref: rN` - fetch with `ida_result`.
+
+The `ida_survey_binary` / `ida_analyze_function_deep` / `ida_safe_refactor`
+MCP prompts encode these steps and can be listed via `prompts/list`.
 ## Development
 
 ```powershell

@@ -104,13 +104,19 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("open");
     let text = first_text(&resp);
-    assert!(text.contains("\"db1\""), "open response: {text}");
+    // Handle names are process-global (db1, db2, ...); parse ours.
+    let handle: String = text
+        .split("\"db\": \"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .unwrap_or("db1")
+        .to_string();
 
     // list functions
     let resp = client
         .call_tool(
             CallToolRequestParams::new("ida_functions").with_arguments(
-                json!({"db": "db1", "offset": 0, "limit": 3})
+                json!({"db": handle, "offset": 0, "limit": 3})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -125,7 +131,7 @@ async fn e2e_stdio_mock_wired() {
     let resp = client
         .call_tool(
             CallToolRequestParams::new("ida_decompile").with_arguments(
-                json!({"db": "db1", "ea": "0x401200"})
+                json!({"db": handle, "ea": "0x401200"})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -143,7 +149,7 @@ async fn e2e_stdio_mock_wired() {
     let resp = client
         .call_tool(
             CallToolRequestParams::new("ida_edit").with_arguments(
-                json!({"db": "db1", "ea": "0x401100", "rename": "helper_renamed"})
+                json!({"db": handle, "ea": "0x401100", "rename": "helper_renamed"})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -176,11 +182,11 @@ async fn e2e_stdio_mock_wired() {
     let text = first_text(&resp);
     assert!(text.contains("db_ambiguous"), "ambiguity response: {text}");
 
-    // close db1 cleanly
+    // close cleanly
     let resp = client
         .call_tool(
             CallToolRequestParams::new("ida_db").with_arguments(
-                json!({"action": "close", "db": "db1"})
+                json!({"action": "close", "db": handle})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -388,6 +394,145 @@ async fn e2e_stdio_mutation_layer() {
         text.contains("helper_planned"),
         "rollback must restore the planned name: {text}"
     );
+
+    let _ = client.cancel().await;
+    server_task.abort();
+}
+
+/// #20 resources + prompts end to end over MCP stdio (mock backend).
+#[tokio::test]
+async fn e2e_stdio_resources_prompts() {
+    let _guard = DB_COUNTER_LOCK.lock().await;
+    let (server_read, client_write) = duplex(64 * 1024);
+    let (client_read, server_write) = duplex(64 * 1024);
+
+    let broker = rmcp_broker::Broker::new(rmcp_core::config::Config::default());
+    let server_task = tokio::spawn(async move {
+        use rmcp::ServiceExt;
+        let service = rmcp_broker::ReverseMcpServer::new(broker);
+        let transport = AsyncRwTransport::new(server_read, server_write);
+        let running = service.serve(transport).await?;
+        running.waiting().await?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
+    });
+
+    let client_info = ClientInfo::default();
+    let client = rmcp::service::serve_client(client_info, (client_read, client_write))
+        .await
+        .expect("client init");
+
+    // open a mock db so resources have a target
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_db").with_arguments(
+                json!({"action": "open", "path": "fixture.i64", "backend": "mock"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("open");
+    let open_text = first_text(&resp);
+    let handle: String = open_text
+        .split("\"db\": \"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .unwrap_or("db1")
+        .to_string();
+
+    // list resource templates: the ida://db/{id}/... family
+    let tpls = client
+        .list_resource_templates(Default::default())
+        .await
+        .expect("list_resource_templates");
+    let tpl_uris: Vec<String> = tpls
+        .resource_templates
+        .iter()
+        .map(|t| t.uri_template.clone())
+        .collect();
+    assert!(
+        tpl_uris.iter().any(|u| u.contains("/metadata")),
+        "templates: {tpl_uris:?}"
+    );
+    assert!(tpl_uris.iter().any(|u| u.contains("/imports")));
+
+    // read metadata + info resources for the open db
+    for kind in ["metadata", "info", "segments"] {
+        let result = client
+            .read_resource(rmcp::model::ReadResourceRequestParams::new(format!(
+                "ida://db/{handle}/{kind}"
+            )))
+            .await
+            .unwrap_or_else(|e| panic!("read {kind}: {e}"));
+        let text = result
+            .contents
+            .first()
+            .map(|c| match c {
+                rmcp::model::ResourceContents::TextResourceContents { text, .. } => text.clone(),
+                _ => String::new(),
+            })
+            .unwrap_or_default();
+        assert!(!text.is_empty(), "resource {kind} must have content");
+    }
+
+    // reading an unknown db handle yields a stable error
+    let err = client
+        .read_resource(rmcp::model::ReadResourceRequestParams::new(
+            "ida://db/db99/metadata",
+        ))
+        .await;
+    assert!(err.is_err(), "unknown db must fail");
+
+    // list prompts: workflow hints exist
+    let prompts = client
+        .list_prompts(Default::default())
+        .await
+        .expect("list_prompts");
+    let names: Vec<String> = prompts.prompts.iter().map(|p| p.name.to_string()).collect();
+    assert!(
+        names.contains(&"ida_survey_binary".to_string()),
+        "prompts: {names:?}"
+    );
+    assert!(names.contains(&"ida_analyze_function_deep".to_string()));
+    assert!(names.contains(&"ida_safe_refactor".to_string()));
+
+    // get one prompt: returns instruction text
+    let prompt = client
+        .get_prompt(
+            rmcp::model::GetPromptRequestParams::new("ida_analyze_function_deep").with_arguments(
+                json!({"ea": "0x401200", "db": handle})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("get_prompt");
+    let prompt_text = prompt
+        .messages
+        .first()
+        .map(|m| match &m.content {
+            rmcp::model::ContentBlock::Text(t) => t.text.clone(),
+            _ => String::new(),
+        })
+        .unwrap_or_default();
+    assert!(
+        prompt_text.contains("0x401200") && prompt_text.contains("ida_decompile"),
+        "prompt must embed the ea and workflow: {prompt_text}"
+    );
+
+    // capabilities tool exposes discovery info
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_capabilities")
+                .with_arguments(json!({"db": handle}).as_object().unwrap().clone()),
+        )
+        .await
+        .expect("capabilities");
+    let text = first_text(&resp);
+    assert!(text.contains("\"identity\""), "caps: {text}");
+    assert!(text.contains("\"budgets\""), "caps: {text}");
 
     let _ = client.cancel().await;
     server_task.abort();

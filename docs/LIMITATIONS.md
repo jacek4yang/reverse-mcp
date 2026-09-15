@@ -27,6 +27,14 @@ under "Shipped" does not work yet.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
 - MCP stdio transport, 26 tools.
+- #20 MCP interface redesign: MCP resources (`ida://db/{id}/metadata,
+  segments, entrypoints, imports, exports, info`) for read-only context
+  without tool calls (bounded by the same output budget); workflow prompts
+  (`ida_survey_binary`, `ida_analyze_function_deep`, `ida_trace_data_flow`,
+  `ida_safe_refactor`, `ida_compare_binaries`) that teach high-level
+  workflows; `ida_capabilities` extended with backend identity (processor,
+  bits, decompiler, revision) and output budgets; tool count intentionally
+  kept at 26 instead of per-API tool sprawl.
 - #16 mutation layer (real-IDA verified): `ida_bytes action=patch` now works
   on the real backend (SDK `patch_bytes`, persists after save/reopen, audit
   records original vs patched bytes). `ida_mutation` tool adds a
