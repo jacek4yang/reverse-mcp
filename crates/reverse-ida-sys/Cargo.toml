@@ -8,3 +8,6 @@ description = "Hand-written FFI layout definitions for the IDA 9.2 SDK types tha
 
 [dependencies.cxx]
 version = "1"
+
+[dev-dependencies.serde_json]
+version = "1"

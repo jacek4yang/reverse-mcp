@@ -35,10 +35,16 @@ under "Shipped" does not work yet.
 - No worker crash recovery yet: an unexpected worker death fails pending
   requests; the caller must close and reopen the DB. No state machine, no
   automatic respawn.
-- Windows x86_64 verified only. Linux/macOS paths exist in discovery but are
-  untested.
-- One verified backend version: 9.2. Other installed IDA versions are
-  discovered and reported as `backend unavailable`.
+- Windows x86_64 verified only. Linux/macOS paths exist in discovery and
+  DotSlash pinfiles cover linux-x86_64/macos-x86_64/macos-aarch64, but no
+  real-IDA runtime test has passed there — platform support is claimed only
+  from tested facts.
+- One verified backend version: 9.2 (pinned in the backend registry with
+  SDK commit + FFI/generator versions + ABI probe facts). Other installed
+  IDA versions are discovered and reported as `backend unavailable`.
+- The ABI probe verifies `backends/abi/expected-9_2.json` against the real
+  SDK headers locally; public CI verifies only the JSON structure and the
+  Rust-side mirrors, not the proprietary headers.
 - `revision` is per-worker-process memory: it does not survive close/reopen.
 - `ida_batch` is read-only by design.
 

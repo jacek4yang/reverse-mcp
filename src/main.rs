@@ -224,6 +224,48 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
     // the worker re-verifies at startup via get_library_version().
     println!("ida version check: re-verified by worker at startup (get_library_version)");
 
+    // Backend manifests: pinned SDK/FFI/generator facts per verified backend.
+    for m in rmcp_core::backend_registry::VERIFIED_BACKENDS {
+        println!(
+            "backend-{}: SDK {} ({}) | ffi: {} | gen: {} | arch: {} | verified: {}",
+            m.key,
+            m.sdk_version,
+            m.sdk_commit,
+            m.ffi_source,
+            m.generator,
+            m.verified_arch.join(","),
+            m.verified
+        );
+    }
+
+    // Rust toolchain pinning.
+    match std::fs::read_to_string("rust-toolchain.toml").or_else(|_| {
+        std::fs::read_to_string(rmcp_core::layout::exe_dir().join("rust-toolchain.toml"))
+    }) {
+        Ok(raw) => {
+            let channel = raw
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("channel = "))
+                .map(|s| s.trim_matches('"').to_string())
+                .unwrap_or_else(|| "unknown".into());
+            println!("rust toolchain: pinned {} (rust-toolchain.toml)", channel);
+        }
+        Err(_) => println!("rust toolchain: rust-toolchain.toml not found (unpinned!)"),
+    }
+
+    // ABI probe: status only (the probe itself needs SDK headers + clang).
+    let abi_facts = "backends/abi/expected-9_2.json";
+    if std::path::Path::new(abi_facts).is_file() {
+        println!(
+            "abi probe: expected-9_2.json present ({}); run scripts/run-abi-probe.ps1 against the SDK headers to verify",
+            abi_facts
+        );
+    } else {
+        println!(
+            "abi probe: no expected fact file found in exe dir (probe runs from the repo checkout)"
+        );
+    }
+
     // A backend-ready install must exist for real work.
     if !installs.iter().any(|i| i.backend_ready()) {
         println!("no backend-ready IDA install (v0.1 verifies 9.2.x only)");

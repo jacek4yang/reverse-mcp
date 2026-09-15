@@ -1,0 +1,66 @@
+{
+  "sdk": {
+    "name": "IDA SDK",
+    "version": "9.2",
+    "sdk_build": "9.2.250908",
+    "headers": "vendor/idalib-sys/sdk/src/include (gitignored; verified from idalib-sys 0.7.2+9.2.250908)"
+  },
+  "backend": "backend-9_2",
+  "platform_key": "x64_win_vc_64",
+  "probes": {
+    "sizeof": {
+      "range_t": 16,
+      "op_t": 40,
+      "insn_t": 360,
+      "argloc_t": 16,
+      "vdloc_t": 16,
+      "tinfo_t": 8,
+      "lvar_locator_t": 24,
+      "lvar_t": 104,
+      "qstring": 24,
+      "citem_t": 24,
+      "cinsn_t": 32,
+      "cblock_t": 24,
+      "cexpr_t": 64,
+      "cswitch_t": 136,
+      "ctry_t": 72,
+      "cthrow_t": 64,
+      "cfunc_t": 184
+    },
+    "alignof": {
+      "range_t": 8,
+      "op_t": 8,
+      "insn_t": 8,
+      "argloc_t": 8,
+      "tinfo_t": 8,
+      "lvar_t": 8,
+      "qstring": 8,
+      "citem_t": 8,
+      "cexpr_t": 8,
+      "cfunc_t": 8
+    },
+    "offsetof": {
+      "op_t.n": 0,
+      "op_t.type": 1,
+      "op_t.reg": 6,
+      "op_t.value": 8,
+      "op_t.addr": 16,
+      "op_t.specval": 24,
+      "op_t.specflag1": 32,
+      "op_t.specflag4": 35,
+      "insn_t.ops": 40,
+      "lvar_t.location": 0,
+      "lvar_t.defea": 16,
+      "lvar_t.name": 32,
+      "lvar_t.tif": 80,
+      "citem_t.ea": 0,
+      "citem_t.op": 8,
+      "cexpr_t.type": 48,
+      "cexpr_t.exflags": 56,
+      "cfunc_t.entry_ea": 0,
+      "cfunc_t.mba": 8,
+      "cfunc_t.body": 16,
+      "cfunc_t.maturity": 56
+    }
+  }
+}

@@ -1,0 +1,59 @@
+#!/usr/bin/env dotslash
+
+// Pinfile for `ninja` — the build backend used by the autocxx/cxx C++
+// integration build. Pinned upstream facts for v1.12.1; the `path` inside
+// each zip archive is `ninja(.exe)`.
+
+{
+  "name": "ninja",
+  "platforms": {
+    "windows-x86_64": {
+      "size": 275425,
+      "hash": "sha256",
+      "digest": "f550fec705b6d6ff58f2db3c374c2277a37691678d6aba463adcbb129108467a",
+      "format": "zip",
+      "path": "ninja.exe",
+      "providers": [
+        {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip"
+        }
+      ]
+    },
+    "linux-x86_64": {
+      "size": 123084,
+      "hash": "sha256",
+      "digest": "6f98805688d19672bd699fbbfa2c2cf0fc054ac3df1f0e6a47664d963d530255",
+      "format": "zip",
+      "path": "ninja",
+      "providers": [
+        {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux.zip"
+        }
+      ]
+    },
+    "macos-x86_64": {
+      "size": 281130,
+      "hash": "sha256",
+      "digest": "89a287444b5b3e98f88a945afa50ce937b8ffd1dcc59c555ad9b1baf855298c9",
+      "format": "zip",
+      "path": "ninja",
+      "providers": [
+        {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-mac.zip"
+        }
+      ]
+    },
+    "macos-aarch64": {
+      "size": 281130,
+      "hash": "sha256",
+      "digest": "89a287444b5b3e98f88a945afa50ce937b8ffd1dcc59c555ad9b1baf855298c9",
+      "format": "zip",
+      "path": "ninja",
+      "providers": [
+        {
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-mac.zip"
+        }
+      ]
+    }
+  }
+}

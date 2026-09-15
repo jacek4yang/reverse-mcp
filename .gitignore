@@ -27,11 +27,19 @@ GROK_TASK.md
 # Vendored idalib SDK material - proprietary, never commit
 vendor/idalib-sys/sdk/
 
+# ABI probe build artifacts
+backends/abi/abi_probe
+backends/abi/abi_probe.exe
+backends/abi/abi_probe.o
+backends/abi/expected_facts.inc
+
 # Local build/test logs
 *.log
 
 # Fixture build artifacts
 tests/fixtures/simple.exe
+tests/fixtures/ctf_*.exe
+tests/fixtures/ctf_rust.pdb
 tests/fixtures/*.ilk
 tests/fixtures/*.obj
 tests/fixtures/*.pdb

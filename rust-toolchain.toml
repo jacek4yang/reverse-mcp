@@ -1,0 +1,8 @@
+# Pinned Rust toolchain — the version reverse-mcp release binaries and the
+# ABI/layout test expectations are verified against. Update deliberately:
+# bump, run `cargo test --workspace` (mock) and the real-IDA idalib suite,
+# then commit.
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
