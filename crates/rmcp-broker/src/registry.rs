@@ -109,6 +109,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["plan", "apply", "audit", "snapshot", "rollback"]}, "operations": {"type": "array", "items": {"type": "object", "properties": {"ea": {"type": "string"}, "kind": {"type": "string", "enum": ["rename", "comment", "patch_bytes", "func.create", "func.delete", "set_type"]}, "name": {"type": "string"}, "comment": {"type": "string"}, "repeatable": {"type": "boolean"}, "hex": {"type": "string"}, "end": {"type": "string"}, "decl": {"type": "string"}}, "required": ["ea", "kind"]}}, "expected_revision": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["action"]}),
         },
         ToolDef {
+            name: "ida_analyze",
+            description: "Composite analysis workflows (#8): one request replaces many atomic calls. workflow=function_context (decompile+prototype+callers/callees+xrefs+strings+constants+imports), call_neighborhood (bounded BFS through call edges, noise-filtered), reference_context (target->xrefs->functions->callers), import_usage (import->sites->callers), subsystem_context (bounded multi-function from roots), trace_call_path (find path between two functions). Budgets: depth, max_functions, detail=summary|normal|full. Unchanged repeats served from a revision-keyed cache (cached=true).",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "workflow": {"type": "string", "enum": ["function_context", "call_neighborhood", "reference_context", "import_usage", "subsystem_context", "trace_call_path"]}, "ea": {"type": "string"}, "target_ea": {"type": "string"}, "name": {"type": "string"}, "roots": {"type": "array", "items": {"type": "string"}}, "depth": {"type": "integer"}, "max_functions": {"type": "integer", "maximum": 50}, "detail": {"type": "string", "enum": ["summary", "normal", "full"]}, "include_noise": {"type": "boolean"}}, "required": ["workflow"]}),
+        },
+        ToolDef {
             name: "ida_evidence",
             description: "Structured evidence search over a database-wide analysis index (#14). action=query (default) runs a predicate tree against function facts: {\"all\":[{\"import\":\"VirtualAlloc\"},{\"has_indirect_calls\":{\"min\":1}}]}, {\"string_contains\":\"...\"}, {\"name_contains\":\"...\"}, {\"constant\":123}, {\"callee_matches\":{...}}, {\"caller_matches\":{...}}, {\"reachable_from\":{\"root_ea\":\"0x...\",\"levels\":2}}, {\"not\":{...}}, {\"any\":[...]}. Every hit lists concrete matched evidence; the score is evidence-derived. action=build rebuilds+persists; action=status shows index summary.",
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["query", "build", "status"]}, "query": {"type": "object", "properties": {"all": {"type": "array", "items": {"type": "object"}}}, "limit": {"type": "integer", "maximum": 1000}}, "limit": {"type": "integer", "maximum": 1000}}}),
@@ -184,6 +189,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_installations" => tools::tool_installations(broker, args).await,
         "ida_health" => tools::tool_health(broker, args).await,
         "ida_evidence" => tools::tool_evidence(broker, args).await,
+        "ida_analyze" => tools::tool_analyze(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

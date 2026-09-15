@@ -906,3 +906,135 @@ async fn real_ida_issue14_evidence_index() {
     drop(s);
     pool.close(&handle).await.expect("close");
 }
+
+/// #8 acceptance, real IDA: one function_context call returns the composite
+/// picture; unchanged repeats are served from cache; a mutation invalidates.
+#[tokio::test]
+#[ignore]
+async fn real_ida_issue8_workflows() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-8.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let fresh_i64 = std::path::PathBuf::from(format!("{}.i64", dst.display()));
+    let _ = std::fs::remove_file(&fresh_i64);
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    let md = s.call("db.metadata", json!({})).await.expect("metadata");
+    let entry_ea = md["entries"][0]["ea"].as_u64().unwrap();
+
+    let out = s
+        .call(
+            "workflow.run",
+            json!({"workflow_req": {
+                "workflow": "function_context",
+                "ea": format!("{entry_ea:#x}"),
+                "detail": "normal"
+            }}),
+        )
+        .await
+        .expect("function_context");
+    let result = &out["result"];
+    assert!(result["name"].as_str().is_some(), "out: {out}");
+    assert!(
+        result["callers"].is_array() && result["callees"].is_array(),
+        "out: {out}"
+    );
+    assert!(result["strings"].is_array(), "out: {out}");
+
+    // Cache: repeat is served from cache.
+    let out2 = s
+        .call(
+            "workflow.run",
+            json!({"workflow_req": {
+                "workflow": "function_context",
+                "ea": format!("{entry_ea:#x}"),
+                "detail": "normal"
+            }}),
+        )
+        .await
+        .expect("repeat");
+    assert_eq!(out2["cached"], true, "repeat must hit cache: {out2}");
+
+    // trace_call_path works on the real graph.
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let arr = fns.as_array().unwrap();
+    let main_f = arr
+        .iter()
+        .find(|f| f["name"].as_str() == Some("main"))
+        .expect("main");
+    let main_ea = main_f["ea_start"].as_u64().unwrap();
+    // Pick a real callee of main from the neighborhood, then trace main -> callee.
+    let neigh = s
+        .call(
+            "workflow.run",
+            json!({"workflow_req": {
+                "workflow": "call_neighborhood",
+                "ea": format!("{main_ea:#x}"),
+                "depth": 1,
+                "max_functions": 5,
+                "include_noise": true
+            }}),
+        )
+        .await
+        .expect("neighborhood");
+    let callee_ea = neigh["result"]["edges"][0]["to"]
+        .as_str()
+        .expect("callee ea")
+        .to_string();
+    let path = s
+        .call(
+            "workflow.run",
+            json!({"workflow_req": {
+                "workflow": "trace_call_path",
+                "ea": format!("{main_ea:#x}"),
+                "target_ea": callee_ea,
+                "depth": 4
+            }}),
+        )
+        .await
+        .expect("trace_call_path");
+    assert_eq!(path["result"]["found"], true, "path: {path}");
+
+    // Mutation invalidates the workflow cache.
+    let rev = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let _ = s
+        .call(
+            "rename",
+            json!({"ea": format!("{entry_ea:#x}"), "name": "issue8_renamed", "expected_revision": rev}),
+        )
+        .await
+        .expect("rename");
+    let out3 = s
+        .call(
+            "workflow.run",
+            json!({"workflow_req": {
+                "workflow": "function_context",
+                "ea": format!("{entry_ea:#x}"),
+                "detail": "normal"
+            }}),
+        )
+        .await
+        .expect("post-mutation");
+    assert_eq!(
+        out3["cached"], false,
+        "mutation must invalidate cache: {out3}"
+    );
+    assert_eq!(
+        out3["result"]["name"], "issue8_renamed",
+        "fresh result must see the rename: {out3}"
+    );
+
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}

@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-27 tools. Every list/search/graph result is bounded; oversized responses spill
+28 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -169,6 +169,37 @@ directories; keyed by input md5 + revision + schema version; corrupt or
 stale cache fails safely and rebuilds). `action=status` reports identity and
 whether the index is current — any mutation bumps the revision and
 invalidates it.
+
+### ida_analyze
+Agent-native composite analysis workflows (#8): one call returns the context an
+agent would otherwise gather with several atomic calls. `ida_analyze` takes the
+workflow request as its whole argument and runs `workflow.run` in the worker:
+`{"workflow": "...", "ea": "0x140001000", "detail": "summary", ...}`.
+
+Workflows:
+- `function_context` — one-call function briefing: index facts (imports called,
+  strings, constants, indirect calls, callers/callees from the index) plus
+  xrefs_to (≤50). `detail=full` adds decompilation; `summary` (default) omits it.
+- `call_neighborhood` — BFS over call edges from a function, CRT/thunk noise
+  filtered (opt back in with `include_noise=true`); reports `truncated` when the
+  `max_functions` budget clips the frontier.
+- `reference_context` — who references this data/address: xrefs, the containing
+  function, its callers; non-summary detail adds a bounded snippet.
+- `import_usage` — all functions calling a given import, name matched
+  case-insensitively against the index.
+- `subsystem_context` — BFS from multiple roots at once; non-summary detail
+  adds bounded snippets per function.
+- `trace_call_path` — call path from a function to a target (`target_ea`),
+  BFS over caller edges; `found: false` when no route exists within `depth`.
+
+Budgets (per request): `depth` (default 2), `max_functions` (default 10,
+clamped 1..50), `detail` (`summary`|`normal`|`full`), `include_noise`. EA
+values accept `0x`-hex strings or numbers. Results come from the #14 analysis
+index; the index is built or rebuilt automatically when missing or stale.
+Responses are cached per (workflow, normalized request, revision) and any
+successful mutation invalidates the whole cache; cache hits carry
+`cached: true` and `cache_hits`. Oversized responses spill to the result store
+as usual.
 
 ## Resources (read-only context)
 

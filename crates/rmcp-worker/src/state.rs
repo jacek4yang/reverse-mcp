@@ -1,5 +1,6 @@
 //! Worker-side state: the active backend, open/closed bookkeeping, the
-//! per-session mutation audit trail (#16), and the analysis index (#14).
+//! per-session mutation audit trail (#16), the analysis index (#14), and the
+//! workflow result cache (#8).
 
 use rmcp_core::analysis_index::AnalysisIndex;
 use rmcp_core::backend::IdaBackend;
@@ -12,6 +13,8 @@ pub struct WorkerState {
     pub audit: Vec<serde_json::Value>,
     /// Built analysis index + the md5 it was keyed by. None until built.
     pub index: Option<(AnalysisIndex, String)>,
+    /// Workflow result cache (#8): revision-keyed; invalidated on mutation.
+    pub workflow_cache: crate::workflow::WorkflowCache,
 }
 
 impl WorkerState {
@@ -22,6 +25,7 @@ impl WorkerState {
             closed: false,
             audit: Vec::new(),
             index: None,
+            workflow_cache: crate::workflow::WorkflowCache::default(),
         }
     }
 }

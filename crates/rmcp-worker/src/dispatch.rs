@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::plan;
 use crate::state::WorkerState;
+use crate::workflow;
 
 fn need_backend(state: &mut WorkerState) -> rmcp_core::error::Result<&mut (dyn IdaBackend + '_)> {
     match state.backend.as_deref_mut() {
@@ -16,12 +17,33 @@ fn need_backend(state: &mut WorkerState) -> rmcp_core::error::Result<&mut (dyn I
     }
 }
 
+/// Methods whose success mutates IDB state (directly or via a plan).
+const MUTATING_METHODS: &[&str] = &[
+    "patch_bytes",
+    "set_comment",
+    "rename",
+    "set_type",
+    "func.create",
+    "func.delete",
+    "func.resize",
+    "hr.lvar_rename",
+    "plan.apply",
+    "snapshot.restore",
+    "analyze_wait",
+];
+
 pub fn handle(state: &mut WorkerState, req: WorkerRequest) -> WorkerResponse {
     let WorkerRequest { id, method, params } = req;
-    match dispatch(state, &method, params) {
+    let resp = match dispatch(state, &method, params) {
         Ok(v) => WorkerResponse::ok(id, v),
         Err(e) => WorkerResponse::err(id, &e),
+    };
+    // #8 cache invalidation: any successful mutation bumps the revision and
+    // invalidates every cached workflow result.
+    if resp.error.is_none() && MUTATING_METHODS.contains(&method.as_str()) {
+        state.workflow_cache.invalidate_all();
     }
+    resp
 }
 
 fn ea_param(params: &Value, key: &str) -> rmcp_core::error::Result<u64> {
@@ -498,6 +520,43 @@ fn dispatch(
             }
             None => Ok(json!({"built": false})),
         },
+        // ---- #8: composite analysis workflows ----
+        "workflow.run" => {
+            let req: workflow::WorkflowRequest = serde_json::from_value(
+                params
+                    .get("workflow_req")
+                    .cloned()
+                    .unwrap_or_else(|| params.clone()),
+            )
+            .map_err(|e| Error::Worker(format!("bad workflow request: {e}")))?;
+            // Rebuild the index if absent or stale (workflows run off it).
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let key = workflow::cache_key(&req, current_rev);
+            if let Some(cached) = state.workflow_cache.get(&key) {
+                return Ok(json!({
+                    "cached": true,
+                    "cache_hits": state.workflow_cache.hits,
+                    "result": cached,
+                }));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            let result = workflow::run(need_backend(state)?, &idx, &req)?;
+            state.workflow_cache.put(key, result.clone());
+            Ok(json!({
+                "cached": false,
+                "cache_hits": state.workflow_cache.hits,
+                "result": result,
+            }))
+        }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }
 }
