@@ -209,6 +209,16 @@ pub trait IdaBackend: Send {
         new_name: &str,
     ) -> Result<MutationOutcome>;
 
+    // ---- #16: snapshots / rollback ----
+
+    /// Take an IDB snapshot/restore point. Real backend wraps IDA's undo
+    /// history (`create_undo_point`); mock records a logical checkpoint.
+    fn snapshot_create(&mut self) -> Result<Value>;
+
+    /// Restore to the last snapshot taken by this session. Reports honestly
+    /// when the backend cannot roll back generically.
+    fn snapshot_restore(&mut self) -> Result<Value>;
+
     // ---- #19: instructions / names ----
 
     /// Canon feature bits (CF_*) and mnemonic of the instruction at `ea`.

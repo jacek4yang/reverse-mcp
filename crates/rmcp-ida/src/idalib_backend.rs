@@ -1,11 +1,11 @@
 //! Real IDA backend backed by the vendored `idalib` crate (IDA 9.2 idalib).
 //!
 //! Compiled only with the `idalib` feature. All calls run on the worker's
-//! main thread — idalib requires every database operation to happen on the
+//! main thread 鈥?idalib requires every database operation to happen on the
 //! thread that initialized the library, and worker dispatch is synchronous
 //! on `main`, which satisfies that constraint.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -27,6 +27,10 @@ pub struct IdaLibBackend {
     idb: Option<IDB>,
     path: Option<String>,
     revision: u64,
+    /// Current snapshot file (#16); None until snapshot_create runs.
+    snapshot_file: Option<PathBuf>,
+    /// Monotonic snapshot counter for unique backup filenames.
+    snapshot_seq: u64,
 }
 
 // SAFETY: idalib requires all database operations to run on the thread that
@@ -42,6 +46,8 @@ impl IdaLibBackend {
             idb: None,
             path: None,
             revision: 0,
+            snapshot_file: None,
+            snapshot_seq: 0,
         }
     }
 
@@ -54,6 +60,29 @@ impl IdaLibBackend {
     fn bump(&mut self) -> u64 {
         self.revision += 1;
         self.revision
+    }
+
+    /// Path of the database file IDA actually persists to (the input path,
+    /// or the .i64 IDA created next to a raw binary input).
+    fn saved_db_file(&self) -> std::result::Result<PathBuf, Error> {
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| Error::Worker("no db open".into()))?;
+        let p = Path::new(path);
+        if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("i64")) {
+            Ok(p.to_path_buf())
+        } else {
+            let mut s = p.as_os_str().to_os_string();
+            s.push(".i64");
+            Ok(PathBuf::from(s))
+        }
+    }
+
+    fn snapshot_path(db_file: &Path, seq: u64) -> PathBuf {
+        let mut s = db_file.as_os_str().to_os_string();
+        s.push(format!(".rmbak-{seq}"));
+        PathBuf::from(s)
     }
 }
 
@@ -134,7 +163,7 @@ impl IdaBackend for IdaLibBackend {
             decompile,
             types: false,
             imports_exports: true,
-            patch_bytes: false,
+            patch_bytes: true,
             rename: true,
             comments: true,
             bookmarks: true,
@@ -515,10 +544,41 @@ impl IdaBackend for IdaLibBackend {
         Ok(json!({"ea": ea, "size": b.len(), "hex": hex}))
     }
 
-    fn patch_bytes(&mut self, _ea: u64, _bytes_hex: &str) -> Result<MutationOutcome> {
-        Err(Error::CapabilityUnavailable {
-            capability: "patch_bytes".into(),
-            reason: "byte patching not exposed via idalib bridge yet".into(),
+    fn patch_bytes(&mut self, ea: u64, bytes_hex: &str) -> Result<MutationOutcome> {
+        let idb = self.idb()?;
+        let _ = idb;
+        let decoded = crate::mock::hex::decode(bytes_hex.trim().replace(' ', "").as_str())
+            .map_err(|e| Error::Worker(format!("bad hex: {e}")))?;
+        if decoded.is_empty() {
+            return Err(Error::Worker("empty patch".into()));
+        }
+        let bytes: Vec<u8> = decoded;
+        // Record original bytes for the audit trail (before/after diff).
+        let original: Vec<u8> = bytes
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                let v =
+                    unsafe { idalib::ffi::bytes::idalib_get_original_byte(into_ea(ea + i as u64)) };
+                (v.0 & 0xFF) as u8
+            })
+            .collect();
+        let ok = unsafe { idalib::ffi::bytes::idalib_patch_bytes(into_ea(ea), &bytes) };
+        if !ok {
+            return Err(Error::Worker(format!("patch failed at {ea:#x}")));
+        }
+        let revision_after = self.bump();
+        let old_hex: String = original.iter().map(|x| format!("{x:02x}")).collect();
+        let new_hex: String = bytes.iter().map(|x| format!("{x:02x}")).collect();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({
+                "ea": format!("{ea:#x}"),
+                "size": bytes.len(),
+                "original": old_hex,
+                "patched": new_hex,
+            }),
         })
     }
 
@@ -918,6 +978,64 @@ impl IdaBackend for IdaLibBackend {
             return Ok(json!({"analyzed": true, "functions": idb.function_count()}));
         }
         Err(Error::Worker("no db open".into()))
+    }
+
+    fn snapshot_create(&mut self) -> Result<Value> {
+        // IDA's create_undo_point/perform_undo proved unreliable for our
+        // use in idalib sessions (perform_undo can silently no-op). A
+        // file-level snapshot is deterministic: save the IDB, copy the
+        // database file aside, and roll back by restoring the copy.
+        self.save()?;
+        let db_file = self.saved_db_file()?;
+        let backup = Self::snapshot_path(&db_file, self.snapshot_seq + 1);
+        std::fs::copy(&db_file, &backup)
+            .map_err(|e| Error::Worker(format!("snapshot copy failed: {e}")))?;
+        self.snapshot_seq += 1;
+        self.snapshot_file = Some(backup);
+        let revision_after = self.bump();
+        Ok(json!({
+            "snapshot": true,
+            "revision_after": revision_after,
+            "rollback": true,
+        }))
+    }
+
+    fn snapshot_restore(&mut self) -> Result<Value> {
+        let backup = match &self.snapshot_file {
+            Some(p) => p.clone(),
+            None => {
+                return Ok(json!({
+                    "restored": false,
+                    "reason": "no snapshot taken",
+                    "rollback": false,
+                }));
+            }
+        };
+        let db_file = self.saved_db_file()?;
+        // Drop the IDB WITHOUT saving: pending changes are discarded.
+        if let Some(idb) = self.idb.as_mut() {
+            idb.save_on_close(false);
+        }
+        self.idb = None;
+        std::fs::copy(&backup, &db_file)
+            .map_err(|e| Error::Worker(format!("snapshot restore failed: {e}")))?;
+        // Reopen the rolled-back database.
+        let path = self
+            .path
+            .clone()
+            .ok_or_else(|| Error::Worker("no db open".into()))?;
+        let mut opts = IDBOpenOptions::new();
+        opts.save(true).auto_analyse(false);
+        let mut idb = opts.open(Path::new(&path)).map_err(err)?;
+        idb.auto_wait();
+        self.idb = Some(idb);
+        let revision_after = self.bump();
+        Ok(json!({
+            "restored": true,
+            "file": backup.display().to_string(),
+            "revision_after": revision_after,
+            "rollback": true,
+        }))
     }
 
     fn run_plugin(&mut self, plugin: &str, args: Option<&str>) -> Result<Value> {

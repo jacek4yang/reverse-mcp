@@ -690,6 +690,7 @@ pub mod ffix {
         include!("segm_extras.h");
         include!("search_extras.h");
         include!("strings_extras.h");
+        include!("undo_extras.h");
         include!("backend_extras.h");
         include!("idasdk_extras.h");
 
@@ -1025,6 +1026,13 @@ pub mod ffix {
         unsafe fn idalib_get_qword(ea: c_ulonglong) -> u64;
         unsafe fn idalib_get_bytes(ea: c_ulonglong, buf: &mut Vec<u8>) -> Result<usize>;
 
+        unsafe fn idalib_patch_bytes(ea: c_ulonglong, bytes: &Vec<u8>) -> bool;
+        unsafe fn idalib_get_original_byte(ea: c_ulonglong) -> c_ulonglong;
+
+        unsafe fn idalib_create_undo_point() -> bool;
+        unsafe fn idalib_perform_undo() -> bool;
+        unsafe fn idalib_undo_action_label() -> String;
+
         unsafe fn idalib_get_input_file_path() -> String;
 
         unsafe fn idalib_save_database() -> bool;
@@ -1210,7 +1218,14 @@ pub mod segment {
 pub mod bytes {
     pub use super::ffi::{flags64_t, get_flags, is_code, is_data};
     pub use super::ffix::{
-        idalib_get_byte, idalib_get_bytes, idalib_get_dword, idalib_get_qword, idalib_get_word,
+        idalib_get_byte, idalib_get_bytes, idalib_get_dword, idalib_get_original_byte,
+        idalib_get_qword, idalib_get_word, idalib_patch_bytes,
+    };
+}
+
+pub mod undo {
+    pub use super::ffix::{
+        idalib_create_undo_point, idalib_perform_undo, idalib_undo_action_label,
     };
 }
 

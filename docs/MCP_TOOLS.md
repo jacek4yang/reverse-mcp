@@ -2,7 +2,7 @@
 
 Status: accurate as of commit `d1d1937` (2026-09-15), branch feat/issue17-versioned-backends.
 
-25 tools. Every list/search/graph result is bounded; oversized responses spill
+26 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -31,6 +31,18 @@ with per-install runtime-DLL presence (`ida.dll`, `idalib.dll`), worker-binary
 probe, idalib feature availability, and a remediation hint. Call this first
 when opens fail or the server appears broken: it distinguishes "no install
 found" from "install present but DLLs missing" from "worker binary broken".
+
+### ida_mutation
+Transaction-like mutation layer. `action=plan`: validate + preview a batch of
+operations (rename, comment, patch_bytes with hex, func.create, func.delete,
+set_type) without changing anything, with a whole-plan `expected_revision`
+guard. `action=apply`: run the plan sequentially with per-op results; a stale
+revision rejects the whole plan before the first op runs, and a mid-plan
+failure reports `partial: true` with everything already applied. `action=
+audit`: bounded per-session trail of applied mutations (old/new state,
+revision after each). `action=snapshot`: file-level IDB snapshot (deterministic
+rollback). `action=rollback`: close without saving, restore the snapshot,
+reopen.
 
 ## Reading
 
@@ -147,7 +159,10 @@ Access spilled results: `read` (by `handle` or `text` search), `metadata`,
 
 Every mutating tool (`ida_edit`, `ida_bytes action=patch`, `ida_types
 action=set`, `ida_func action=create/delete/resize`, `ida_hr
-action=lvar_rename`) accepts `expected_revision`. If present and stale, the
+action=lvar_rename`, `ida_mutation action=apply`) accepts `expected_revision`.
+If present and stale, the
 mutation is
 rejected with `revision_conflict` before touching the DB; the revision only
 increments after a confirmed successful mutation. Omitted → no check.
+`ida_mutation action=apply` guards the WHOLE plan: a stale revision rejects
+the batch before the first operation runs.

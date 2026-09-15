@@ -636,3 +636,171 @@ async fn real_ida_issue19_func_mutations() {
     drop(s);
     pool.close(&handle).await.expect("close");
 }
+
+/// #16 acceptance, real IDA: patch bytes persist after save/reopen; the
+/// mutation audit trail records old/new state; snapshot/rollback restores
+/// a pre-mutation name. Requires IDADIR.
+#[tokio::test]
+#[ignore]
+async fn real_ida_issue16_mutation_layer() {
+    // Copy fixture to a scratch path; IDA creates the .i64 next to it.
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-16.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    // A stale .i64 from a previous run already contains saved mutations,
+    // making the test non-idempotent - remove it before opening.
+    let fresh_i64 = std::path::PathBuf::from(format!("{}.i64", dst.display()));
+    let _ = std::fs::remove_file(&fresh_i64);
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    let md = s.call("db.metadata", json!({})).await.expect("metadata");
+    let entry_ea = md["entries"][0]["ea"].as_u64().expect("entry point ea");
+
+    // --- plan: stale whole-plan revision is rejected before any op runs ---
+    let rev = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let stale = s
+        .call(
+            "plan.apply",
+            json!({
+                "expected_revision": rev.wrapping_sub(1),
+                "operations": [
+                    {"ea": format!("{entry_ea:#x}"), "kind": "rename", "name": "nope"}
+                ]
+            }),
+        )
+        .await;
+    match stale {
+        Err(e) => assert_eq!(e.code(), "revision_conflict"),
+        Ok(v) => panic!("stale plan must be rejected: {v}"),
+    }
+
+    // --- apply: rename + comment plan applies, audit trail grows by 2 ---
+    let rev = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let applied = s
+        .call(
+            "plan.apply",
+            json!({
+                "expected_revision": rev,
+                "operations": [
+                    {"ea": format!("{entry_ea:#x}"), "kind": "rename", "name": "issue16_planned"},
+                    {"ea": format!("{entry_ea:#x}"), "kind": "comment", "comment": "issue16 audit note"}
+                ]
+            }),
+        )
+        .await
+        .expect("plan.apply");
+    assert_eq!(applied["applied"], 2, "apply: {applied}");
+    assert_eq!(applied["partial"], false);
+
+    let audit = s
+        .call("mutation.audit", json!({"limit": 10}))
+        .await
+        .expect("audit");
+    assert!(audit["total"].as_u64().unwrap() >= 2, "audit: {audit}");
+    let entries = audit["entries"].as_array().unwrap();
+    assert!(
+        entries.iter().any(|e| e["kind"] == "rename"),
+        "audit: {audit}"
+    );
+
+    // --- snapshot -> mutate -> rollback restores the pre-snapshot name ---
+    let snap = s
+        .call("snapshot.create", json!({}))
+        .await
+        .expect("snapshot");
+    let snap_rev = snap["revision_after"].as_u64().unwrap();
+
+    let rev = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let _ = s
+        .call(
+            "rename",
+            json!({"ea": format!("{entry_ea:#x}"), "name": "issue16_after_snap", "expected_revision": rev}),
+        )
+        .await
+        .expect("rename after snapshot");
+
+    let restored = s
+        .call("snapshot.restore", json!({}))
+        .await
+        .expect("restore");
+    assert_eq!(restored["restored"], true, "restore: {restored}");
+    assert!(restored["revision_after"].as_u64().unwrap() > snap_rev);
+
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions after rollback");
+    let gone = !fns
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["name"].as_str() == Some("issue16_after_snap"));
+    assert!(gone, "rollback must restore the pre-snapshot name");
+    let still_there = fns
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["name"].as_str() == Some("issue16_planned"));
+    assert!(
+        still_there,
+        "planned rename must survive the later rollback"
+    );
+
+    // --- patch persistence: patch, save, close, reopen, verify bytes ---
+    let rev = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let p = s
+        .call(
+            "patch_bytes",
+            json!({"ea": format!("{entry_ea:#x}"), "hex": "90", "expected_revision": rev}),
+        )
+        .await
+        .expect("patch for persistence");
+    assert_eq!(p["changed"], true);
+    let original_hex = p["detail"]["original"]
+        .as_str()
+        .expect("original bytes")
+        .to_string();
+    s.call("db.save", json!({})).await.expect("save");
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+
+    // reopen the same database file
+    let i64_path = std::path::PathBuf::from(format!("{}.i64", dst));
+    let handle2 = open_idalib(&mut pool, i64_path.to_string_lossy().as_ref()).await;
+    let session2 = pool.session(&handle2).await.expect("session2");
+    let s2 = session2.lock().await;
+    let bytes = s2
+        .call(
+            "get_bytes",
+            json!({"ea": format!("{entry_ea:#x}"), "size": 1}),
+        )
+        .await
+        .expect("bytes after reopen");
+    assert_eq!(
+        bytes["hex"], "90",
+        "patched byte must persist after save/reopen: {bytes}"
+    );
+    let orig = s2
+        .call("patch_bytes", json!({"ea": format!("{entry_ea:#x}"), "hex": original_hex, "expected_revision": s2.call("revision", json!({})).await.unwrap()["revision"].as_u64().unwrap()}))
+        .await
+        .expect("restore original byte");
+    assert_eq!(orig["changed"], true);
+    s2.call("db.save", json!({})).await.expect("save 2");
+    s2.call("db.close", json!({})).await.expect("close 2");
+    drop(s2);
+    pool.close(&handle2).await.expect("close pool 2");
+}

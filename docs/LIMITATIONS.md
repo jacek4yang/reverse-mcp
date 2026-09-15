@@ -26,7 +26,17 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 25 tools.
+- MCP stdio transport, 26 tools.
+- #16 mutation layer (real-IDA verified): `ida_bytes action=patch` now works
+  on the real backend (SDK `patch_bytes`, persists after save/reopen, audit
+  records original vs patched bytes). `ida_mutation` tool adds a
+  transaction-like layer: `plan` (validate + preview without changes, whole-
+  plan revision guard), `apply` (sequential execution with per-op results,
+  partial-outcome reporting on failure, stale revision rejects the whole plan
+  before the first op), `audit` (bounded per-session trail of applied
+  mutations with old/new state), `snapshot`/`rollback` (file-level IDB
+  snapshot: save + copy the database file aside; restore = close without
+  saving, restore the copy, reopen).
 - #28 Windows loader hardening (real-IDA verified): `ida.dll`/`idalib.dll` are
   delay-loaded (`/DELAYLOAD` + `delayimp.lib`) so the broker and mock-worker
   modes start without the IDA install dir on PATH — previously the process died
@@ -43,9 +53,6 @@ under "Shipped" does not work yet.
 
 ## Known limitations (honest)
 
-- `patch_bytes`: the tool surface and `expected_revision` plumbing exist, but
-  the real backend returns `capability_unavailable` — IDB byte patching is not
-  implemented yet. `ida_bytes action=patch` therefore fails on the real backend.
 - `ida_types action=set`: returns `capability_unavailable`; only `list`/`get`
   of local types are wired, and even those are partial (til access via the
   vendored binding is limited).

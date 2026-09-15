@@ -6,6 +6,7 @@ use rmcp_core::error::Error;
 use rmcp_core::protocol::{WorkerRequest, WorkerResponse};
 use serde_json::{Value, json};
 
+use crate::plan;
 use crate::state::WorkerState;
 
 fn need_backend(state: &mut WorkerState) -> rmcp_core::error::Result<&mut (dyn IdaBackend + '_)> {
@@ -229,6 +230,7 @@ fn dispatch(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Worker("missing hex".into()))?;
             let out = need_backend(state)?.patch_bytes(ea, hex)?;
+            plan::record_audit(&mut state.audit, "patch_bytes", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "get_comment" => {
@@ -251,6 +253,7 @@ fn dispatch(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let out = need_backend(state)?.set_comment(ea, comment, rep)?;
+            plan::record_audit(&mut state.audit, "comment", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "rename" => {
@@ -261,6 +264,7 @@ fn dispatch(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Worker("missing name".into()))?;
             let out = need_backend(state)?.rename(ea, name)?;
+            plan::record_audit(&mut state.audit, "rename", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "types" => {
@@ -276,6 +280,7 @@ fn dispatch(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Worker("missing decl".into()))?;
             let out = need_backend(state)?.set_type(ea, decl)?;
+            plan::record_audit(&mut state.audit, "set_type", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "analyze_wait" => {
@@ -327,12 +332,14 @@ fn dispatch(
             };
             check_revision(&params, need_backend(state)?)?;
             let out = need_backend(state)?.func_create(start, end)?;
+            plan::record_audit(&mut state.audit, "func.create", start, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "func.delete" => {
             let ea = ea_param(&params, "ea")?;
             check_revision(&params, need_backend(state)?)?;
             let out = need_backend(state)?.func_delete(ea)?;
+            plan::record_audit(&mut state.audit, "func.delete", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "func.resize" => {
@@ -347,6 +354,7 @@ fn dispatch(
             };
             check_revision(&params, need_backend(state)?)?;
             let out = need_backend(state)?.func_resize(ea, new_start, new_end)?;
+            plan::record_audit(&mut state.audit, "func.resize", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         "func.switch_info" => {
@@ -380,6 +388,7 @@ fn dispatch(
                 .ok_or_else(|| Error::Worker("missing name".into()))?;
             check_revision(&params, need_backend(state)?)?;
             let out = need_backend(state)?.hr_lvar_rename(ea, var_defea, name)?;
+            plan::record_audit(&mut state.audit, "hr.lvar_rename", ea, &out);
             serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
         }
         // ---- #19: instructions / names ----
@@ -404,6 +413,48 @@ fn dispatch(
             let out = need_backend(state)?.run_plugin(plugin, args)?;
             Ok(out)
         }
+        // ---- #16: mutation plans / snapshots / audit trail ----
+        "plan.mutations" => {
+            let ops_json = params
+                .get("operations")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| Error::Worker("missing 'operations' array".into()))?;
+            let ops = plan::parse_operations(ops_json)?;
+            // Whole-plan revision guard at plan time: a stale plan is
+            // rejected before any preview state is produced.
+            let expected = params.get("expected_revision").and_then(|v| v.as_u64());
+            plan::check_plan_revision(need_backend(state)?, expected)?;
+            plan::plan(need_backend(state)?, &ops)
+        }
+        "plan.apply" => {
+            let ops_json = params
+                .get("operations")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| Error::Worker("missing 'operations' array".into()))?;
+            let ops = plan::parse_operations(ops_json)?;
+            // Whole-plan guard BEFORE the first mutation runs.
+            let expected = params.get("expected_revision").and_then(|v| v.as_u64());
+            plan::check_plan_revision(need_backend(state)?, expected)?;
+            let mut audit = std::mem::take(&mut state.audit);
+            // Apply runs with the backend borrowed from state; the audit
+            // vec was moved out first so the borrows do not overlap.
+            let result = plan::apply(need_backend(state)?, &ops, &mut audit);
+            // Keep the audit trail even when the plan fails mid-way: the
+            // partial outcome is exactly what the agent needs to see.
+            state.audit = audit;
+            let out = result?;
+            Ok(out)
+        }
+        "mutation.audit" => {
+            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+            Ok(plan::audit_tail(&state.audit, limit))
+        }
+        "snapshot.create" => {
+            // Backend-agnostic entry point: the real backend wraps IDA's
+            // create_undo_point; mock records a logical checkpoint.
+            need_backend(state)?.snapshot_create()
+        }
+        "snapshot.restore" => need_backend(state)?.snapshot_restore(),
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }
 }

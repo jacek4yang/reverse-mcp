@@ -19,6 +19,18 @@ pub struct MockBackend {
     comments: std::collections::BTreeMap<(u64, bool), String>,
     bytes: std::collections::BTreeMap<u64, Vec<u8>>,
     decompile_off: bool,
+    /// Snapshot stack (#16): each entry clones the mutable state at
+    /// snapshot time so `snapshot_restore` can roll back.
+    snapshots: Vec<SnapshotState>,
+}
+
+/// Full copy of the mutable IDB state for logical rollback.
+#[derive(Debug, Clone)]
+struct SnapshotState {
+    revision: u64,
+    names: std::collections::BTreeMap<u64, String>,
+    comments: std::collections::BTreeMap<(u64, bool), String>,
+    bytes: std::collections::BTreeMap<u64, Vec<u8>>,
 }
 
 impl MockBackend {
@@ -46,6 +58,7 @@ impl MockBackend {
             comments: std::collections::BTreeMap::new(),
             bytes,
             decompile_off: false,
+            snapshots: Vec::new(),
         }
     }
 
@@ -631,6 +644,43 @@ impl IdaBackend for MockBackend {
         Ok(json!({"name": name, "demangled": demangled, "changed": demangled != name}))
     }
 
+    fn snapshot_create(&mut self) -> Result<Value> {
+        self.require_open()?;
+        self.snapshots.push(SnapshotState {
+            revision: self.revision,
+            names: self.names.clone(),
+            comments: self.comments.clone(),
+            bytes: self.bytes.clone(),
+        });
+        Ok(json!({
+            "snapshot": self.snapshots.len(),
+            "revision": self.revision,
+            "rollback": true,
+        }))
+    }
+
+    fn snapshot_restore(&mut self) -> Result<Value> {
+        self.require_open()?;
+        match self.snapshots.pop() {
+            Some(snap) => {
+                let restored_from = snap.revision;
+                self.revision = snap.revision;
+                self.names = snap.names;
+                self.comments = snap.comments;
+                self.bytes = snap.bytes;
+                // Rollback itself is a state change: bump so concurrent
+                // planners cannot act on a stale revision view.
+                let revision_after = self.bump();
+                Ok(json!({
+                    "restored": true,
+                    "restored_to_revision": restored_from,
+                    "revision_after": revision_after,
+                }))
+            }
+            None => Ok(json!({"restored": false, "reason": "no snapshot taken"})),
+        }
+    }
+
     fn analyze_wait(&mut self) -> Result<Value> {
         self.require_open()?;
         Ok(json!({"analyzed": true, "functions": self.names.len()}))
@@ -651,7 +701,7 @@ impl IdaBackend for MockBackend {
 }
 
 // Minimal hex helper (avoid an external dependency for one function).
-mod hex {
+pub(crate) mod hex {
     pub fn decode(s: &str) -> std::result::Result<Vec<u8>, String> {
         if !s.len().is_multiple_of(2) {
             return Err("odd hex length".into());
