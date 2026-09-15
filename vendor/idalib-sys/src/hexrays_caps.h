@@ -74,7 +74,13 @@ inline void collect_row(WalkCtx &ctx, citem_t *item) {
     auto *e = (cexpr_t *)item;
     switch (item->op) {
       case cot_num:
-        row.c = e->numval();
+        // e->numval() expands the SDK's QASSERT macro, which references the
+        // `under_debugger` data export of ida.dll — a data import that breaks
+        // /DELAYLOAD:ida.dll (data imports cannot be delay-bound). We already
+        // guarantee op == cot_num here, so take the assert-free path via
+        // cnumber_t::value(); that still imports extend_sign, but it is a
+        // function import and delay-loadable.
+        row.c = e->n->value(e->type);
         break;
       case cot_obj:
         row.c = (uint64_t)e->obj_ea;

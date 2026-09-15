@@ -104,6 +104,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object"}),
         },
         ToolDef {
+            name: "ida_health",
+            description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
+            schema: json!({"type": "object"}),
+        },
+        ToolDef {
             name: "ida_metadata",
             description: "Extended DB metadata: md5/sha256 of the input file, image base, entry points (ordinal/ea/name). TLS callbacks and exception handlers are reported as unsupported when not exposed.",
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}}}),
@@ -167,6 +172,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_result" => tools::tool_result(broker, args).await,
         "ida_segments" => tools::tool_segments(broker, args).await,
         "ida_installations" => tools::tool_installations(broker, args).await,
+        "ida_health" => tools::tool_health(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

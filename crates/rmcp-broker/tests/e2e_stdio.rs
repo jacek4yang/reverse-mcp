@@ -48,7 +48,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 24, "expected 24 tools, got {names:?}");
+    assert_eq!(names.len(), 25, "expected 25 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -61,6 +61,28 @@ async fn e2e_stdio_mock_wired() {
     assert!(names.contains(&"ida_func".to_string()));
     assert!(names.contains(&"ida_hr".to_string()));
     assert!(names.contains(&"ida_insn".to_string()));
+    // #28 self-diagnosis tool
+    assert!(names.contains(&"ida_health".to_string()));
+
+    // ida_health: must succeed on an IDA-less machine (CI) and report a
+    // structured diagnosis (worker probe + at least discovery shape).
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_health")
+                .with_arguments(json!({}).as_object().unwrap().clone()),
+        )
+        .await
+        .expect("ida_health");
+    let text = first_text(&resp);
+    assert!(text.contains("\"healthy\""), "health response: {text}");
+    assert!(
+        text.contains("\"worker_probe_ok\""),
+        "health response: {text}"
+    );
+    assert!(
+        text.contains("\"hint\""),
+        "health response must carry a remediation hint: {text}"
+    );
 
     // open db (mock backend explicitly; default is idalib)
     let resp = client

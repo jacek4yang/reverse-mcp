@@ -102,6 +102,11 @@ fn main() {
             .define("__NT__", "1")
             .define("__EA64__", "1")
             .compile("libida-stubs");
+        // The delay-load helper (delayimp) must be linked into the final
+        // binary whenever /DELAYLOAD is used; cxx-build emits the static lib,
+        // so pass the linker flag through to the consuming crate.
+        println!("cargo::rustc-link-arg=/DELAYLOAD:ida.dll");
+        println!("cargo::rustc-link-arg=/DELAYLOAD:idalib.dll");
     }
 
     let pod = autocxx_bindgen::builder()

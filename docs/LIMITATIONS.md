@@ -26,7 +26,18 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 24 tools.
+- MCP stdio transport, 25 tools.
+- #28 Windows loader hardening (real-IDA verified): `ida.dll`/`idalib.dll` are
+  delay-loaded (`/DELAYLOAD` + `delayimp.lib`) so the broker and mock-worker
+  modes start without the IDA install dir on PATH — previously the process died
+  with 0xC0000135 before `main`. The worker preloads the DLLs at CRT startup
+  (`.CRT$XCU` constructor) whenever `REVERSE_MCP_IDA_DIR` is exported, and
+  prepends that dir to `PATH` so IDA's plugin/loader lookups succeed. Workers
+  that die before the protocol handshake now produce a stable
+  `capability_unavailable` diagnostic naming the missing DLLs and the fix
+  (`set IDADIR or add the install dir to PATH`). New `ida_health` MCP tool
+  self-reports discovery, runtime-DLL presence, worker probe and idalib
+  feature availability even when no install is found.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 

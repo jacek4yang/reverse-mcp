@@ -92,6 +92,12 @@ fn configure_linkage_aux(path: &Path) {
         // .lib
         println!("cargo::rustc-link-lib=static=ida");
         println!("cargo::rustc-link-lib=static=idalib");
+        // Delay-load ida.dll/idalib.dll: the broker process must be able to
+        // start (and self-diagnose) when the IDA install dir is not on PATH.
+        // Without this the Windows loader resolves both DLLs before main and
+        // the process dies with 0xC0000135 before any MCP traffic.
+        println!("cargo::rustc-link-arg=/DELAYLOAD:ida.dll");
+        println!("cargo::rustc-link-arg=/DELAYLOAD:idalib.dll");
     } else {
         // .dylib/.so
         println!("cargo::rustc-link-lib=dylib=ida");
@@ -109,9 +115,10 @@ pub fn configure_idasdk_linkage() {
     configure_linkage_aux(&stubs_path);
 
     if cfg!(target_os = "windows") {
-        // FIXME: this seems to be required otherwise we report missing symbols and bail during
-        // linking (seems to be due to autocxx)...
-        println!("cargo::rustc-link-arg=/FORCE:UNRESOLVED");
+        // __delayLoadHelper2 must be linked in for /DELAYLOAD thunks; without
+        // delayimp.lib the linker zero-fills the delay thunks and the first
+        // IDA call jumps to address 0.
+        println!("cargo::rustc-link-arg=delayimp.lib");
     }
 }
 

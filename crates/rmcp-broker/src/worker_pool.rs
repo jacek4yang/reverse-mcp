@@ -104,6 +104,43 @@ pub struct WorkerPool {
     idalib_feature: Option<bool>,
 }
 impl WorkerPool {
+    /// Build the actionable error for a worker that died before hello. Checks
+    /// whether the configured/discovered IDA dir actually contains the runtime
+    /// DLLs so the message can distinguish "no install" from "install broken".
+    fn diagnose_dead_worker(ida_dir: Option<&std::path::Path>) -> Error {
+        let dlls = ["ida.dll", "idalib.dll"];
+        let hint = match ida_dir {
+            Some(dir) => {
+                let missing: Vec<&str> = dlls
+                    .iter()
+                    .copied()
+                    .filter(|d| !dir.join(d).exists())
+                    .collect();
+                if missing.is_empty() {
+                    format!(
+                        "IDA runtime DLLs found in {} but the worker still died at startup; \
+                         verify the install is complete and matches this build",
+                        dir.display()
+                    )
+                } else {
+                    format!(
+                        "IDA runtime DLLs missing from {}: {}; \
+                         set IDADIR or add the IDA install dir to PATH",
+                        dir.display(),
+                        missing.join(", ")
+                    )
+                }
+            }
+            None => "IDA runtime DLLs not found on PATH; \
+                     set IDADIR or add the IDA install dir to PATH"
+                .to_string(),
+        };
+        Error::CapabilityUnavailable {
+            capability: "idalib".into(),
+            reason: format!("{hint} (worker exited before protocol handshake)"),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             sessions: Vec::new(),
@@ -273,10 +310,17 @@ impl WorkerPool {
 
         // Read the hello frame.
         let mut reader = AsyncFrameReader::new(tokio::io::BufReader::new(stdout));
-        let hello: WorkerHello = reader
-            .read()
-            .await?
-            .ok_or_else(|| Error::Worker("worker exited before hello".into()))?;
+        let hello: WorkerHello = match reader.read().await? {
+            Some(h) => h,
+            None => {
+                // The worker died before the protocol even started. The
+                // classic cause is the IDA runtime DLLs not being resolvable
+                // (Windows loader status 0xC0000135 = STATUS_DLL_NOT_FOUND);
+                // give the agent an actionable, stable-coded diagnostic
+                // instead of a bare exit code.
+                return Err(Self::diagnose_dead_worker(ida_dir.as_deref()));
+            }
+        };
         if hello.protocol != PROTOCOL_VERSION {
             return Err(Error::Worker(format!(
                 "worker protocol {} != broker protocol {}",
@@ -328,7 +372,7 @@ impl WorkerPool {
     /// Does this exe support the idalib backend? Probed once by running
     /// `<exe> worker --probe-backend idalib` (the worker prints `idalib` and
     /// exits 0). Falls back to false.
-    fn worker_has_idalib_feature(&mut self) -> bool {
+    pub fn worker_has_idalib_feature(&mut self) -> bool {
         if let Some(flag) = self.idalib_feature {
             return flag;
         }
