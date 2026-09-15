@@ -763,6 +763,25 @@ pub async fn tool_mutation(broker: &Broker, args: Value) -> Result<Value, McpErr
     Ok(json!({"db": db, "mutation": out}))
 }
 
+/// ida_analyze - #8 composite analysis workflows: one request replaces
+/// many atomic calls. workflow=function_context|call_neighborhood|
+/// reference_context|import_usage|subsystem_context|trace_call_path with
+/// budgets (depth, max_functions, detail=summary|normal|full). Revision-
+/// keyed cache: unchanged repeats are served from cache (cached=true).
+pub async fn tool_analyze(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let mut req = args.clone();
+    if let Some(obj) = req.as_object_mut() {
+        obj.remove("db");
+    }
+    let out = s
+        .call("workflow.run", json!({"workflow_req": req}))
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "analysis": out}))
+}
+
 /// ida_evidence - #14 structured evidence search over the analysis index.
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries

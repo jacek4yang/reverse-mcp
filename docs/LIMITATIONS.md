@@ -26,7 +26,7 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 27 tools.
+- MCP stdio transport, 28 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -64,6 +64,16 @@ under "Shipped" does not work yet.
   (`set IDADIR or add the install dir to PATH`). New `ida_health` MCP tool
   self-reports discovery, runtime-DLL presence, worker probe and idalib
   feature availability even when no install is found.
+- #8 composite analysis workflows (real-IDA verified): `ida_analyze` runs six
+  one-call context workflows (`function_context`, `call_neighborhood`,
+  `reference_context`, `import_usage`, `subsystem_context`, `trace_call_path`)
+  over the #14 analysis index — one MCP call replaces several atomic calls.
+  Request budgets (`depth`, `max_functions` clamped 1..50, `detail`,
+  `include_noise`) bound output; high-confidence CRT/thunk noise is filtered
+  from graph walks (opt-in `include_noise=true`); results are cached per
+  (workflow, request, revision) with `cached`/`cache_hits` reported and the
+  whole cache invalidated by any successful mutation; `detail=summary` keeps
+  decompilation out unless explicitly requested (`detail=full`).
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 

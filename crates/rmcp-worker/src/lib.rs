@@ -12,6 +12,7 @@ use rmcp_core::protocol::{FrameReader, PROTOCOL_VERSION, WorkerHello, WorkerRequ
 pub mod dispatch;
 pub mod plan;
 pub mod state;
+pub mod workflow;
 
 /// Capability probe: does this build support backend `kind`? The broker runs
 /// `<exe> --probe-backend <kind>` to detect the real idalib backend without
