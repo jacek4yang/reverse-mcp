@@ -698,6 +698,39 @@ impl IdaBackend for MockBackend {
             {"name": "sample_audit", "source": "reverse-mcp plugins dir"},
         ]))
     }
+
+    fn build_index(&self) -> Result<(rmcp_core::analysis_index::AnalysisIndex, String)> {
+        let mut idx = rmcp_core::analysis_index::AnalysisIndex {
+            schema_version: rmcp_core::analysis_index::INDEX_SCHEMA_VERSION,
+            binary_md5: "mock-md5".into(),
+            revision: self.revision,
+            functions: Default::default(),
+            strings: Default::default(),
+        };
+        for f in self.functions_vec() {
+            idx.functions.insert(
+                f.ea_start,
+                rmcp_core::analysis_index::FunctionFacts {
+                    ea_start: f.ea_start,
+                    ea_end: f.ea_end,
+                    name: f.name.clone(),
+                    strings: self.strings_of(f.ea_start),
+                    ..Default::default()
+                },
+            );
+        }
+        Ok((idx, "mock-md5".into()))
+    }
+
+    fn input_md5(&self) -> Result<String> {
+        Ok("mock-md5".into())
+    }
+}
+
+impl MockBackend {
+    fn strings_of(&self, _ea: u64) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 // Minimal hex helper (avoid an external dependency for one function).

@@ -1,6 +1,7 @@
 //! Domain model shared by all reverse-mcp crates: config, discovery, errors,
 //! backend trait, handles, result store.
 
+pub mod analysis_index;
 pub mod backend;
 pub mod backend_registry;
 pub mod config;

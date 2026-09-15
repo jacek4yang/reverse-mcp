@@ -455,6 +455,49 @@ fn dispatch(
             need_backend(state)?.snapshot_create()
         }
         "snapshot.restore" => need_backend(state)?.snapshot_restore(),
+        // ---- #14: analysis index / evidence search ----
+        "index.build" => {
+            let (idx, md5) = need_backend(state)?.build_index()?;
+            // Persist under the reverse-mcp cache dir; failure to persist is
+            // non-fatal (the in-memory index still serves this session).
+            let summary = idx.summary();
+            let _ = idx.save(&rmcp_core::layout::cache_dir(), &md5);
+            state.index = Some((idx, md5));
+            Ok(summary)
+        }
+        "index.query" => {
+            let query: rmcp_core::analysis_index::EvidenceQuery =
+                serde_json::from_value(params.get("query").cloned().unwrap_or(json!({})))
+                    .map_err(|e| Error::Worker(format!("bad query: {e}")))?;
+            // Rebuild on demand if not built yet; rebuild again (incremental
+            // invalidation) if the DB revision moved since the build.
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, md5) = state.index.as_ref().expect("just built");
+            let hits = idx.query(&query);
+            Ok(json!({
+                "count": hits.len(),
+                "md5": md5,
+                "hits": hits,
+            }))
+        }
+        "index.status" => match &state.index {
+            Some((idx, md5)) => {
+                let mut s = idx.summary();
+                s["md5"] = json!(md5);
+                s["current"] = json!(idx.revision == need_backend(state)?.revision());
+                Ok(s)
+            }
+            None => Ok(json!({"built": false})),
+        },
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }
 }

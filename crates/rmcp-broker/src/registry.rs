@@ -109,6 +109,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["plan", "apply", "audit", "snapshot", "rollback"]}, "operations": {"type": "array", "items": {"type": "object", "properties": {"ea": {"type": "string"}, "kind": {"type": "string", "enum": ["rename", "comment", "patch_bytes", "func.create", "func.delete", "set_type"]}, "name": {"type": "string"}, "comment": {"type": "string"}, "repeatable": {"type": "boolean"}, "hex": {"type": "string"}, "end": {"type": "string"}, "decl": {"type": "string"}}, "required": ["ea", "kind"]}}, "expected_revision": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["action"]}),
         },
         ToolDef {
+            name: "ida_evidence",
+            description: "Structured evidence search over a database-wide analysis index (#14). action=query (default) runs a predicate tree against function facts: {\"all\":[{\"import\":\"VirtualAlloc\"},{\"has_indirect_calls\":{\"min\":1}}]}, {\"string_contains\":\"...\"}, {\"name_contains\":\"...\"}, {\"constant\":123}, {\"callee_matches\":{...}}, {\"caller_matches\":{...}}, {\"reachable_from\":{\"root_ea\":\"0x...\",\"levels\":2}}, {\"not\":{...}}, {\"any\":[...]}. Every hit lists concrete matched evidence; the score is evidence-derived. action=build rebuilds+persists; action=status shows index summary.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["query", "build", "status"]}, "query": {"type": "object", "properties": {"all": {"type": "array", "items": {"type": "object"}}}, "limit": {"type": "integer", "maximum": 1000}}, "limit": {"type": "integer", "maximum": 1000}}}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -178,6 +183,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_segments" => tools::tool_segments(broker, args).await,
         "ida_installations" => tools::tool_installations(broker, args).await,
         "ida_health" => tools::tool_health(broker, args).await,
+        "ida_evidence" => tools::tool_evidence(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

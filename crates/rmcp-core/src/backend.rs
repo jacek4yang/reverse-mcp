@@ -230,6 +230,15 @@ pub trait IdaBackend: Send {
     fn analyze_wait(&mut self) -> Result<Value>;
     fn run_plugin(&mut self, plugin: &str, args: Option<&str>) -> Result<Value>;
     fn list_plugins(&self) -> Result<Value>;
+
+    // ---- #14: analysis index ----
+
+    /// Build an AnalysisIndex from the current database. Returns the index
+    /// plus the input-file md5 used as the cache identity.
+    fn build_index(&self) -> Result<(crate::analysis_index::AnalysisIndex, String)>;
+
+    /// Input-file md5 (from db.metadata), for cache identity.
+    fn input_md5(&self) -> Result<String>;
 }
 
 /// Boxed alias used across the workspace.

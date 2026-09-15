@@ -26,7 +26,15 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 26 tools.
+- MCP stdio transport, 27 tools.
+- #14 analysis index + evidence search (real-IDA verified): database-wide
+  `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
+  callees/callers/globals; string reference lists), structured predicate
+  queries via `ida_evidence` (combinable `all`/`any`/`not` predicates with
+  per-hit concrete evidence), persistent cache under the reverse-mcp cache
+  dir keyed by input md5 + revision + schema version (corrupt/stale cache
+  fails safely and rebuilds), revision-based incremental invalidation (any
+  mutation marks the index stale; the next query rebuilds).
 - #20 MCP interface redesign: MCP resources (`ida://db/{id}/metadata,
   segments, entrypoints, imports, exports, info`) for read-only context
   without tool calls (bounded by the same output budget); workflow prompts

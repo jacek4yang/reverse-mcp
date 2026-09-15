@@ -763,9 +763,49 @@ pub async fn tool_mutation(broker: &Broker, args: Value) -> Result<Value, McpErr
     Ok(json!({"db": db, "mutation": out}))
 }
 
+/// ida_evidence - #14 structured evidence search over the analysis index.
+/// action=query (default; predicate tree over functions/imports/strings/constants/
+/// calls), build (rebuild + persist), status (index summary). Every hit carries
+/// concrete matched evidence; the score is derived from it, never opaque.
 /// ida_health 鈥?self-report that works even when no IDA install is found.
 /// Surfaces discovery results, runtime-DLL presence, worker-exe probe and
 /// idalib-feature availability so agents can self-diagnose instead of guessing.
+pub async fn tool_evidence(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = match arg_str(&args, "action").unwrap_or("query") {
+        "build" => s.call("index.build", json!({})).await.map_err(err_from)?,
+        "status" => s.call("index.status", json!({})).await.map_err(err_from)?,
+        "query" => {
+            let query = args
+                .get("query")
+                .cloned()
+                .ok_or_else(|| mcp_code("invalid_args", "evidence query requires 'query'"))?;
+            let mut out = s
+                .call("index.query", json!({"query": query}))
+                .await
+                .map_err(err_from)?;
+            if let Some(hits) = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .and_then(|_| out["hits"].as_array_mut())
+            {
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(0);
+                hits.truncate(limit as usize);
+                out["count"] = json!(hits.len());
+            }
+            out
+        }
+        other => {
+            return Err(mcp_code(
+                "invalid_args",
+                &format!("unknown evidence action '{other}' (query|build|status)"),
+            ));
+        }
+    };
+    Ok(json!({"db": db, "evidence": out}))
+}
+
 pub async fn tool_health(broker: &Broker, _args: Value) -> Result<Value, McpError> {
     let explicit = broker.config.ida_dir.clone();
     let installs = tokio::task::spawn_blocking(move || {
