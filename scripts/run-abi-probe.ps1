@@ -27,9 +27,10 @@ $ErrorActionPreference = 'Stop'
 function Find-Clang {
     param([string]$Requested)
     if ($Requested -ne "") { return $Requested }
-    # Prefer the DotSlash-provisioned toolchain, then any clang on PATH.
-    $dotslashClang = "toolchain/bin/clang++"
-    if (Test-Path $dotslashClang) { return (Resolve-Path $dotslashClang).Path }
+    # Prefer a DotSlash-provisioned zig driver if present, then any clang on PATH.
+    foreach ($p in @("toolchain/bin/zig", "toolchain/bin/zig.exe")) {
+        if (Test-Path $p) { return (Resolve-Path $p).Path }
+    }
     $cmd = Get-Command clang++ -ErrorAction SilentlyContinue
     if ($null -ne $cmd) { return $cmd.Source }
     throw "clang++ not found. Run the DotSlash bootstrap (toolchain/README.md) or pass -Clang <path>."
