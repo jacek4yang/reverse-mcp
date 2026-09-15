@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Status: accurate as of commit `d1d1937` (2026-09-15), branch feat/issue17-versioned-backends.
+Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
 26 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
@@ -154,6 +154,36 @@ results or errors.
 ### ida_result
 Access spilled results: `read` (by `handle` or `text` search), `metadata`,
 `find`, `release`.
+
+## Resources (read-only context)
+
+Frequently-read state is exposed as MCP resources so agents can pull context
+without tool calls; content passes the same output budget as tools:
+
+- `ida://db/{id}/metadata` — extended metadata (md5/sha256, image base,
+  entry points)
+- `ida://db/{id}/segments` — all segments
+- `ida://db/{id}/entrypoints` — entry points (ordinal/ea/name)
+- `ida://db/{id}/imports` — imported modules and entries (paginated)
+- `ida://db/{id}/exports` — export view (entry points)
+- `ida://db/{id}/info` — basic DB info (function count, processor, bits)
+
+`{id}` is the db handle returned by `ida_db action=open`. Unknown handles
+yield a stable `unknown_db` error.
+
+## Prompts (workflow hints)
+
+Optional prompts that encode the recommended workflow; clients list them via
+`prompts/list` and render with `prompts/get`:
+
+- `ida_survey_binary` — metadata/segments/entrypoints/imports survey, then a
+  structure report
+- `ida_analyze_function_deep` — inspect → decompile → lvars → xrefs →
+  constants, evidence-table summary
+- `ida_trace_data_flow` — bidirectional xref walk with per-hop decompilation
+- `ida_safe_refactor` — plan → preview → snapshot → apply with
+  expected_revision → audit
+- `ida_compare_binaries` — two-db diff of counts, segments, strings, hashes
 
 ## Optimistic concurrency
 

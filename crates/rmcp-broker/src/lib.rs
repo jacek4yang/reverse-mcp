@@ -7,8 +7,10 @@
 use std::sync::Arc;
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    ListToolsResult, ServerCapabilities, ServerInfo,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, GetPromptRequestParams,
+    GetPromptResponse, Implementation, ListPromptsResult, ListResourceTemplatesResult,
+    ListResourcesResult, ListToolsResult, ReadResourceRequestParams, ReadResourceResponse,
+    ServerCapabilities, ServerInfo,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
@@ -18,8 +20,10 @@ use tokio::sync::Mutex;
 use rmcp_core::config::Config;
 use rmcp_core::result_store::ResultStore;
 
+pub mod prompts;
 pub mod recovery;
 mod registry;
+pub mod resources;
 pub mod tools;
 pub mod worker_pool;
 
@@ -195,13 +199,64 @@ impl ReverseMcpServer {
 
 impl ServerHandler for ReverseMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::from_build_env())
-            .with_instructions(
-                "Reverse engineering over IDA Pro. Open a database with ida_db(action=open) \
-                 first; use the returned db handle (db1, db2, ...) on every other tool. \
-                 Large outputs spill to result handles (r1, ...) — read them with ida_result.",
-            )
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_prompts()
+                .build(),
+        )
+        .with_server_info(Implementation::from_build_env())
+        .with_instructions(
+            "Reverse engineering over IDA Pro. Open a database with ida_db(action=open) \
+             first; use the returned db handle (db1, db2, ...) on every other tool. \
+             Large outputs spill to result handles (r1, ...) — read them with ida_result. \
+             Prefer resources (ida://db/{id}/...) for frequently-read state, ida_mutation \
+             action=plan for change batches, and the workflow prompts (survey, deep-dive, \
+             refactor) before chaining atomic calls.",
+        )
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        Ok(resources::list())
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        Ok(resources::templates())
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResponse, McpError> {
+        resources::read(&self.broker, request.uri.as_ref())
+            .await
+            .map(Into::into)
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        Ok(prompts::list())
+    }
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, McpError> {
+        prompts::get(&request).map(Into::into)
     }
 
     async fn list_tools(
