@@ -576,12 +576,16 @@ fn dispatch(
                 let (idx, md5) = need_backend(state)?.build_index()?;
                 state.index = Some((idx, md5));
             }
+            // Resume runs continue a specific partial walk and bypass the
+            // result cache (they must do fresh work); fresh runs use the
+            // revision-keyed cache so unchanged repeats are free.
+            let resume = params.get("resume_from").filter(|v| v.is_object());
             let key = (
                 "deep_function".to_string(),
                 format!("{root:#x}|{budgets:?}"),
                 current_rev,
             );
-            if let Some(cached) = state.workflow_cache.get(&key) {
+            if resume.is_none() && let Some(cached) = state.workflow_cache.get(&key) {
                 return Ok(json!({
                     "cached": true,
                     "cache_hits": state.workflow_cache.hits,
@@ -589,8 +593,15 @@ fn dispatch(
                 }));
             }
             let (idx, _md5) = state.index.as_ref().expect("just built").clone();
-            let result = deep::deep_function(need_backend(state)?, &idx, root, &budgets)?;
-            state.workflow_cache.put(key, result.clone());
+            let result = deep::deep_function(need_backend(state)?, &idx, root, &budgets, resume)?;
+            if resume.is_none() {
+                let key = (
+                    "deep_function".to_string(),
+                    format!("{root:#x}|{budgets:?}"),
+                    current_rev,
+                );
+                state.workflow_cache.put(key, result.clone());
+            }
             Ok(json!({
                 "cached": false,
                 "cache_hits": state.workflow_cache.hits,
