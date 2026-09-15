@@ -59,6 +59,24 @@ verified version key: `9_2`. Every other discovered version reports
 never a silent fallback. The worker re-verifies at startup via
 `get_library_version()`.
 
+### Versioned backend registry
+
+`crates/rmcp-core/src/backend_registry.rs` is the single source of truth: one
+`BackendManifest` per verified backend pinning the exact SDK version/commit,
+FFI source revision, binding-generator versions and verified architectures.
+`discovery::backend_status` derives its verdict from this table, so adding a
+new backend (new manifest entry + its crate + a real-IDA test pass) requires
+no MCP/session API redesign.
+
+### ABI probe
+
+`backends/abi/abi_probe.cpp` + `expected-9_2.json` + `scripts/run-abi-probe.ps1`:
+the probe is compiled against the exact vendored SDK headers and
+static_asserts each recorded sizeof/alignof/offsetof; the same JSON is
+asserted against the Rust mirrors in `crates/reverse-ida-sys` tests. A layout
+mismatch (SDK bump, compiler change, platform flag change) fails the compile.
+No SDK library is linked and nothing proprietary is emitted.
+
 ## Broker / worker protocol
 
 - IPC: newline-delimited JSON over worker stdin/stdout. First frame

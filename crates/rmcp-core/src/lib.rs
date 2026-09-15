@@ -2,6 +2,7 @@
 //! backend trait, handles, result store.
 
 pub mod backend;
+pub mod backend_registry;
 pub mod config;
 pub mod discovery;
 pub mod error;

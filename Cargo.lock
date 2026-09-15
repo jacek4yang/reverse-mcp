@@ -1220,6 +1220,7 @@ name = "reverse-ida-sys"
 version = "0.1.0"
 dependencies = [
  "cxx",
+ "serde_json",
 ]
 
 [[package]]

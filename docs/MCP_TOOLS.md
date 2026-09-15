@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-Status: accurate as of commit `b8fe1cd` (2026-09-15), main branch.
+Status: accurate as of commit `d1d1937` (2026-09-15), branch feat/issue17-versioned-backends.
 
 17 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.

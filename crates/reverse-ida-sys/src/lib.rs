@@ -575,6 +575,96 @@ const _: () = {
     assert!(core::mem::size_of::<cfunc_t>() == 184);
     assert!(core::mem::size_of::<qstring>() == 24);
 };
+/// Facts verified against the real SDK headers by the C++ ABI probe
+/// (`backends/abi`, run via scripts/run-abi-probe.ps1). The JSON is the
+/// single source of truth shared with the compile-time C++ static_asserts.
+#[cfg(test)]
+mod abi_probe_facts {
+    use super::*;
+
+    /// Load `backends/abi/expected-9_2.json` from the repo root. Tests run
+    /// with CARGO_MANIFEST_DIR = crates/reverse-ida-sys.
+    fn expected_json() -> serde_json::Value {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../backends/abi/expected-9_2.json");
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        serde_json::from_str(&raw).expect("parse expected-9_2.json")
+    }
+
+    fn fact(json: &serde_json::Value, family: &str, name: &str) -> u64 {
+        json["probes"][family][name]
+            .as_u64()
+            .unwrap_or_else(|| panic!("missing fact {family}.{name}"))
+    }
+
+    #[test]
+    fn rust_mirrors_match_expected_abi_facts() {
+        let json = expected_json();
+
+        assert_eq!(
+            core::mem::size_of::<range_t>() as u64,
+            fact(&json, "sizeof", "range_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<op_t>() as u64,
+            fact(&json, "sizeof", "op_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<insn_t>() as u64,
+            fact(&json, "sizeof", "insn_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<argloc_t>() as u64,
+            fact(&json, "sizeof", "argloc_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<tinfo_t>() as u64,
+            fact(&json, "sizeof", "tinfo_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<lvar_t>() as u64,
+            fact(&json, "sizeof", "lvar_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<qstring>() as u64,
+            fact(&json, "sizeof", "qstring")
+        );
+        assert_eq!(
+            core::mem::size_of::<citem_t>() as u64,
+            fact(&json, "sizeof", "citem_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<cexpr_t>() as u64,
+            fact(&json, "sizeof", "cexpr_t")
+        );
+        assert_eq!(
+            core::mem::size_of::<cfunc_t>() as u64,
+            fact(&json, "sizeof", "cfunc_t")
+        );
+
+        assert_eq!(
+            core::mem::offset_of!(op_t, n) as u64,
+            fact(&json, "offsetof", "op_t.n")
+        );
+        assert_eq!(
+            core::mem::offset_of!(op_t, specflag4) as u64,
+            fact(&json, "offsetof", "op_t.specflag4")
+        );
+        assert_eq!(
+            core::mem::offset_of!(citem_t, ea) as u64,
+            fact(&json, "offsetof", "citem_t.ea")
+        );
+        assert_eq!(
+            core::mem::offset_of!(cexpr_t, typ) as u64,
+            fact(&json, "offsetof", "cexpr_t.type")
+        );
+        assert_eq!(
+            core::mem::offset_of!(cfunc_t, maturity) as u64,
+            fact(&json, "offsetof", "cfunc_t.maturity")
+        );
+    }
+}
 #[cfg(test)]
 mod layout_tests {
     use super::*;

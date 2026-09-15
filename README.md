@@ -70,11 +70,37 @@ agent ←→ broker (reverse-mcp.exe serve, MCP stdio)
 
 Every candidate is validated (runtime libs present, version read from the PE version resource / name hints) and the worker re-verifies at startup via `get_library_version()`.
 
+## Versioned backends
+
+Backends are pinned per IDA SDK revision in a checked-in registry
+(`crates/rmcp-core/src/backend_registry.rs`): the exact SDK version/commit,
+FFI source revision, binding-generator versions, and verified architectures.
+Discovery marks an install `backend ready` only when a verified manifest
+exists for its version — other versions are never silently driven.
+
+Layout correctness is enforced by an **ABI probe** (`backends/abi/`): the
+C++ contract file is compiled against the exact vendored SDK headers and
+static_asserts every recorded sizeof/alignof/offsetof from
+`backends/abi/expected-9_2.json`; the same JSON is checked against the Rust
+mirrors in `crates/reverse-ida-sys` unit tests, so C++ and Rust are verified
+against one source of truth. Run it locally with
+`pwsh scripts/run-abi-probe.ps1` (needs the SDK headers + any clang++, the
+pinned `zig c++` driver works).
+
+Build tools (clang via `zig`, `ninja`) are pinned with
+[DotSlash](https://dotslash-cli.com) pinfiles under `toolchain/dotslash/`;
+Rust is pinned by `rust-toolchain.toml`. Only redistributable build tools
+are pinned there — never IDA/Hex-Rays material. See
+[`toolchain/README.md`](toolchain/README.md).
+
+`reverse-mcp doctor` reports all of the above: toolchain pins, backend
+manifests, ABI-probe status, and discovered installs.
+
 ## Prerequisites
 
-- Windows x86_64 (Linux/macOS untested)
+- Windows x86_64 (Linux/macOS untested — see platform matrix in `doctor`/docs)
 - **IDA Pro 9.2** with a valid license (launched at least once)
-- Rust stable (building only)
+- Rust stable (building only; version pinned via `rust-toolchain.toml`)
 
 ## Quick start
 
@@ -107,11 +133,14 @@ cargo build --release -p reverse-mcp --features idalib
 ## Development
 
 ```powershell
-cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
+cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker -p reverse-ida-sys
 cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker --all-targets -- -D warnings
 
 # real-IDA integration tests (local, requires IDADIR + license)
 cargo test --release -p reverse-mcp --features idalib --test idalib_real -- --ignored
+
+# ABI probe: verify SDK layouts against backends/abi/expected-9_2.json
+pwsh scripts/run-abi-probe.ps1
 ```
 
 Note: the `--features idalib` build statically imports `ida.dll`/`idalib.dll`,

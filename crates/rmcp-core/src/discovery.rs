@@ -225,11 +225,11 @@ pub enum BackendStatus {
 }
 
 /// The set of minor versions this workspace ships verified backends for.
-/// v0.1: only 9.2. Adding 9.3 later means adding `9_3` here (plus its crate).
-const VERIFIED_BACKENDS: &[&str] = &["9_2"];
-
+/// Derived from the backend registry (`backend_registry::VERIFIED_BACKENDS`),
+/// the single source of truth for backend/version pinning. Adding 9.3 later
+/// means adding a verified `BackendManifest` entry there (plus its crate).
 fn backend_status(v: &Version) -> BackendStatus {
-    if VERIFIED_BACKENDS.contains(&v.backend_key().as_str()) {
+    if crate::backend_registry::is_verified(&v.backend_key()) {
         BackendStatus::Ready
     } else {
         BackendStatus::Unavailable

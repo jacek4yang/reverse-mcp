@@ -1,0 +1,64 @@
+#!/usr/bin/env dotslash
+
+// Pinfile for `zig++` — the C++ compiler driver used by the IDA 9.2 ABI
+// probe (backends/abi/abi_probe.cpp). Zig ships a pinned clang plus the
+// C++ headers needed to compile the SDK headers, in one compact,
+// redistributable archive. Verified upstream facts from
+// https://ziglang.org/download/index.json (0.14.1).
+//
+// Never distribute IDA runtime/Hex-Rays decompilers/licenses through
+// DotSlash; only redistributable build tools live here.
+
+{
+  "name": "zig",
+  "platforms": {
+    "windows-x86_64": {
+      "size": 82229343,
+      "hash": "sha256",
+      "digest": "554f5378228923ffd558eac35e21af020c73789d87afeabf4bfd16f2e6feed2c",
+      "format": "zip",
+      "path": "zig-x86_64-windows-0.14.1/zig.exe",
+      "providers": [
+        {
+          "url": "https://ziglang.org/download/0.14.1/zig-x86_64-windows-0.14.1.zip"
+        }
+      ]
+    },
+    "linux-x86_64": {
+      "size": 49086504,
+      "hash": "sha256",
+      "digest": "24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c",
+      "format": "tar.xz",
+      "path": "zig-x86_64-linux-0.14.1/zig",
+      "providers": [
+        {
+          "url": "https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz"
+        }
+      ]
+    },
+    "macos-x86_64": {
+      "size": 51044512,
+      "hash": "sha256",
+      "digest": "b0f8bdfb9035783db58dd6c19d7dea89892acc3814421853e5752fe4573e5f43",
+      "format": "tar.xz",
+      "path": "zig-x86_64-macos-0.14.1/zig",
+      "providers": [
+        {
+          "url": "https://ziglang.org/download/0.14.1/zig-x86_64-macos-0.14.1.tar.xz"
+        }
+      ]
+    },
+    "macos-aarch64": {
+      "size": 45903552,
+      "hash": "sha256",
+      "digest": "39f3dc5e79c22088ce878edc821dedb4ca5a1cd9f5ef915e9b3cc3053e8faefa",
+      "format": "tar.xz",
+      "path": "zig-aarch64-macos-0.14.1/zig",
+      "providers": [
+        {
+          "url": "https://ziglang.org/download/0.14.1/zig-aarch64-macos-0.14.1.tar.xz"
+        }
+      ]
+    }
+  }
+}

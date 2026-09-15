@@ -54,3 +54,40 @@ fn decompile_requires_args() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("usage:"), "stderr: {stderr}");
 }
+
+#[test]
+fn doctor_reports_backend_and_toolchain_sections() {
+    let out = cli().args(["doctor"]).output().expect("run doctor");
+    // Exit 0 = healthy machine; exit 1 = "PROBLEMS FOUND" (expected on CI,
+    // where no IDA install exists). Both are valid doctor outcomes.
+    assert!(
+        out.status.success() || out.status.code() == Some(1),
+        "doctor must exit 0 or 1; got {:?}",
+        out.status.code()
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Versioned backend manifest: pinned SDK facts for the one verified
+    // backend, printed verbatim from the registry.
+    assert!(
+        stdout.contains("backend-9_2:"),
+        "doctor must report backend manifests; stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("9.2.250908"),
+        "manifest must pin the exact SDK build; stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("autocxx 0.27"),
+        "manifest must pin the binding generator version; stdout: {stdout}"
+    );
+    // Toolchain pinning is visible.
+    assert!(
+        stdout.contains("rust toolchain: pinned"),
+        "doctor must report the pinned rust toolchain; stdout: {stdout}"
+    );
+    // ABI probe status section exists.
+    assert!(
+        stdout.contains("abi probe:"),
+        "doctor must report ABI probe status; stdout: {stdout}"
+    );
+}
