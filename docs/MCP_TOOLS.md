@@ -75,6 +75,49 @@ Segment list: `name`, `start_ea`, `end_ea`, permissions (`rwx`).
 `analyze_wait`: blocks until auto-analysis finishes; returns `analyzed` and the
 function count.
 
+### ida_metadata
+Extended DB metadata: `md5`/`sha256` of the input file (null when
+unavailable), `imagebase`, `entry_count` + `entries` (ordinal/ea/name), plus
+honest `tls_callbacks_supported:false` / `exception_handlers_supported:false`
+fields (not exposed by the SDK surface used).
+
+### ida_imports
+Imported modules with entries (`ea`, `name`, `ordinal`); `module` selects one
+index, `offset`/`limit` paginate.
+
+### ida_fixups
+Fixup/relocation records (`ea`, `kind`, `flags`, `base`, `sel`, `off`,
+`displacement`) with `total`; `offset`/`limit` paginate.
+
+### ida_filemap
+`value` + `to_ea=false` (default) maps an EA to the input-file offset;
+`to_ea=true` maps a file offset back to an EA. Unmapped values error cleanly.
+
+### ida_func
+Function-structure operations. `action=tails` lists the function's chunks
+(entry + tails) with sizes and `is_tail_target`; `switch_info` returns bounded
+jump-table metadata (flags, jump/value table, ncases, elbase, ...) for the
+indirect jump at `ea`; `sp_delta` returns the cumulative SP delta at `ea`.
+`create` (`start`, optional `end`), `delete` (`ea`) and `resize` (`ea`,
+`new_start`/`new_end`) are mutations: they bump the revision and honour
+`expected_revision`.
+
+### ida_hr
+Hex-Rays structured view. `action=cfunc` (default) returns the function's
+`return_type`, bounded typed `ctree` node summaries (`ea`, `op` as
+cot_*/cit_* codes, `c` payload: number value / object EA / var index / member
+offset / pointer size, rendered `text`) and `lvars` (`defea`, `name`,
+`type_text`, `width`, `is_arg`, `is_result`); `include_ctree`/`include_lvars`
+gate the lists, `limit` bounds rows, `*_truncated` flags an exceeded limit.
+`action=lvar_rename` renames a lvar by `var_defea` (as reported in `cfunc`
+lvars); it is a mutation: bumps the revision and honours `expected_revision`,
+and the new name is visible in subsequent decompilations.
+
+### ida_insn
+Instruction-level metadata: `action=features` returns the canon `CF_*`
+feature bits and mnemonic at `ea`; `action=demangle` demangles `name`
+(`changed:false` + passthrough when the name is not demangleable).
+
 ## Mutating
 
 ### ida_edit
@@ -96,6 +139,8 @@ Access spilled results: `read` (by `handle` or `text` search), `metadata`,
 ## Optimistic concurrency
 
 Every mutating tool (`ida_edit`, `ida_bytes action=patch`, `ida_types
-action=set`) accepts `expected_revision`. If present and stale, the mutation is
+action=set`, `ida_func action=create/delete/resize`, `ida_hr
+action=lvar_rename`) accepts `expected_revision`. If present and stale, the
+mutation is
 rejected with `revision_conflict` before touching the DB; the revision only
 increments after a confirmed successful mutation. Omitted → no check.

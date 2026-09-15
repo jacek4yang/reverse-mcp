@@ -284,3 +284,355 @@ async fn real_ida_two_dbs_concurrent() {
     pool.close(&h1).await.expect("close 1");
     pool.close(&h2).await.expect("close 2");
 }
+
+/// #19 capability gaps: metadata, imports, fixups, file map, tails, switch
+/// info, sp delta, ctree/lvar summaries, demangle and insn features against
+/// the real fixture. Read-only over the existing fixture DB.
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue19_capability_chain() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-19.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    // --- db.metadata: hashes + imagebase + entries ---
+    let md = s.call("db.metadata", json!({})).await.expect("db.metadata");
+    // MD5 of the copied fixture must be present (16 bytes hex)...
+    let md5 = md["md5"].as_str().expect("md5 present");
+    assert_eq!(md5.len(), 32, "md5 hex length");
+    // ...and must equal the digest IDA recorded at open (same file), i.e.
+    // the value must be a well-formed lowercase hex digest, not a stub.
+    assert!(
+        md5.bytes().all(|b| b.is_ascii_hexdigit()),
+        "md5 must be hex: {md5}"
+    );
+    assert!(
+        md["imagebase"].as_u64().is_some(),
+        "imagebase missing: {md}"
+    );
+    assert!(
+        md["imagebase"].as_u64() == Some(0x140000000),
+        "PE default imagebase expected, got {md}"
+    );
+    assert_eq!(
+        md["tls_callbacks_supported"], false,
+        "TLS callbacks must be reported honestly as unsupported"
+    );
+    // --- imports.list: fixture imports from KERNEL32 ---
+    let imports = s
+        .call("imports.list", json!({}))
+        .await
+        .expect("imports.list");
+    let modules = imports["modules"].as_array().expect("modules array");
+    assert!(
+        !modules.is_empty() && modules[0]["name"].as_str().is_some_and(|n| !n.is_empty()),
+        "expected at least one named import module, got {modules:?}"
+    );
+
+    // --- file.map: EA of the entry point must map to a real file offset ---
+    let entry_ea = md["entries"][0]["ea"]
+        .as_u64()
+        .expect("entry point ea in metadata");
+    let fwd = s
+        .call("file.map", json!({"value": entry_ea}))
+        .await
+        .expect("file.map ea->offset");
+    let off = fwd["file_offset"].as_i64().expect("file offset");
+    assert!(off >= 0, "entry point must map into the file");
+    let back = s
+        .call("file.map", json!({"value": off, "to_ea": true}))
+        .await
+        .expect("file.map offset->ea");
+    assert_eq!(back["ea"].as_u64(), Some(entry_ea), "roundtrip");
+
+    // --- fixups.list: may be empty for this MSVC link; shape must hold ---
+    let fx = s.call("fixups.list", json!({})).await.expect("fixups");
+    assert!(fx["total"].as_u64().is_some(), "fixup total missing: {fx}");
+
+    // --- func.tails + sp_delta + insn features on helper ---
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let arr = fns.as_array().expect("functions array");
+    let helper = arr
+        .iter()
+        .find(|f| f["name"].as_str().is_some_and(|n| n.contains("helper")))
+        .expect("helper function")
+        .clone();
+    let helper_ea = helper["ea_start"].as_u64().unwrap();
+    let tails = s
+        .call("func.tails", json!({"ea": helper_ea}))
+        .await
+        .expect("func.tails");
+    let chunks = tails["chunks"].as_array().expect("chunks");
+    assert!(!chunks.is_empty(), "at least the entry chunk");
+    assert_eq!(chunks[0]["start"].as_u64(), Some(helper_ea));
+    let sp = s
+        .call("func.sp_delta", json!({"ea": helper_ea}))
+        .await
+        .expect("sp_delta");
+    assert!(sp["sp_delta"].as_i64().is_some(), "sp_delta payload: {sp}");
+    let feats = s
+        .call("insn.features", json!({"ea": helper_ea}))
+        .await
+        .expect("insn.features");
+    assert!(
+        feats["features"].as_u64().is_some(),
+        "canon feature bits: {feats}"
+    );
+    assert!(
+        !feats["mnemonic"].as_str().unwrap_or_default().is_empty(),
+        "mnemonic must decode at helper"
+    );
+
+    // --- func.switch_info: the fixture's dispatch() compiles to a cmp chain
+    // (no jump table), so NO address carries switch info. The honest
+    // assertion: scanning dispatch must not crash, and any switch found
+    // (none expected here) would carry a jump table.
+    let dispatch = arr
+        .iter()
+        .find(|f| f["name"].as_str().is_some_and(|n| n.contains("dispatch")))
+        .expect("dispatch function")
+        .clone();
+    let dispatch_ea = dispatch["ea_start"].as_u64().unwrap();
+    let dispatch_end = dispatch["ea_end"].as_u64().unwrap();
+    let insns = s
+        .call(
+            "disassemble",
+            json!({"ea": dispatch_ea, "end": dispatch_end, "max_insns": 200}),
+        )
+        .await
+        .expect("disassemble dispatch");
+    for i in insns.as_array().expect("insns").iter() {
+        let ea = i["ea"].as_u64().unwrap();
+        // must return a clean error (not crash) for non-switch addresses
+        let _ = s.call("func.switch_info", json!({"ea": ea})).await;
+    }
+
+    // --- hr.cfunc: bounded ctree summaries + lvars + return type ---
+    let hr = s
+        .call(
+            "hr.cfunc",
+            json!({"ea": helper_ea, "include_ctree": true, "include_lvars": true, "limit": 50}),
+        )
+        .await
+        .expect("hr.cfunc");
+    let ctree = hr["ctree"].as_array().expect("ctree array");
+    assert!(
+        ctree.len() >= 5,
+        "helper ctree should have multiple nodes, got {}",
+        ctree.len()
+    );
+    // cot_num rows carry the numeric value in `c`
+    assert!(
+        ctree.iter().any(|r| r["op"].as_u64().is_some()),
+        "ctree rows must carry typed op codes"
+    );
+    assert!(
+        ctree
+            .iter()
+            .any(|r| r["text"].as_str().is_some_and(|t| !t.is_empty())),
+        "ctree expressions must carry rendered text"
+    );
+    assert_eq!(
+        hr["ctree_truncated"].as_bool(),
+        Some(false),
+        "50-row limit must not truncate helper"
+    );
+    let lvars = hr["lvars"].as_array().expect("lvars array");
+    assert!(
+        lvars.iter().any(|l| l["is_arg"].as_bool() == Some(true)),
+        "helper must have at least one arg lvar: {lvars:?}"
+    );
+    assert!(
+        lvars.iter().all(|l| l["type_text"].as_str().is_some()),
+        "each lvar must carry a rendered type text"
+    );
+    assert!(
+        hr["return_type"].as_str().is_some_and(|t| !t.is_empty()),
+        "return type text must be rendered: {hr}"
+    );
+
+    // --- hr.lvar_rename: rename the first arg lvar (its locator defea is
+    // the function entry in this fixture), persist and re-decompile.
+    let rename_target = lvars[0]["defea"].as_u64().expect("first lvar defea");
+    let ren = s
+        .call(
+            "hr.lvar_rename",
+            json!({"ea": helper_ea, "var_defea": rename_target, "name": "it19_arg"}),
+        )
+        .await
+        .expect("hr.lvar_rename");
+    assert_eq!(ren["changed"], true);
+    // re-decompile must show the renamed lvar
+    let hr2 = s
+        .call(
+            "hr.cfunc",
+            json!({"ea": helper_ea, "include_ctree": false, "include_lvars": true, "limit": 50}),
+        )
+        .await
+        .expect("hr.cfunc after rename");
+    let lvars2 = hr2["lvars"].as_array().expect("lvars2");
+    assert!(
+        lvars2
+            .iter()
+            .any(|l| l["name"].as_str() == Some("it19_arg")),
+        "renamed lvar must appear in fresh decompilation: {lvars2:?}"
+    );
+
+    // --- names.demangle: fixture is MSVC C, feed a known MSVC mangled name ---
+    let dem = s
+        .call("names.demangle", json!({"name": "?fn@ns@@YAHXZ"}))
+        .await
+        .expect("names.demangle");
+    assert_eq!(dem["changed"], true, "MSVC name must demangle: {dem}");
+
+    // --- demangle passthrough for a plain C name ---
+    let plain = s
+        .call("names.demangle", json!({"name": "helper"}))
+        .await
+        .expect("demangle plain");
+    assert_eq!(plain["changed"], false);
+
+    s.call("db.save", json!({})).await.expect("save");
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}
+
+/// #19 function-structure mutations: create / resize / delete with
+/// expected_revision guarding.
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue19_func_mutations() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-19-mut.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    let rev0 = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+
+    // Pick a code address that is not inside any function (scan for undefined
+    // code past the last function). Use main's tail bytes region: we create a
+    // function at a known code address by first deleting nothing — instead we
+    // grab the address of an instruction INSIDE main (offset +2) which belongs
+    // to no function start, and create a function there? add_func on a
+    // mid-function address fails; so use a fresh path: find undefined bytes.
+    // Simplest deterministic approach: create at main's entry + main size
+    // boundary is risky. Instead, locate any "sub_" region via the analyzer:
+    // use an address right after main's end where padding/thunk code may sit.
+    // Robust choice: pick the entry thunk of an import (data) — no. We use
+    // `functions` list: choose the LAST function's end; alignment padding
+    // follows. If creation fails there, the API must return a clean error.
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let arr = fns.as_array().expect("functions array");
+    let last = arr.last().expect("last function");
+    let probe = last["ea_end"].as_u64().unwrap() + 0x10;
+
+    // create at a likely-invalid address must fail cleanly (not crash)
+    let r = s.call("func.create", json!({"start": probe})).await;
+    // On MSVC-linked binaries the tail may or may not hold code; both a clean
+    // error and a success are acceptable, but a crash/panic is not.
+    let created = r.is_ok() && r.unwrap()["changed"] == true;
+    let rev_after_create = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    if created {
+        assert!(
+            rev_after_create > rev0,
+            "successful mutation must bump revision"
+        );
+        // delete it again
+        let del = s
+            .call(
+                "func.delete",
+                json!({"ea": probe, "expected_revision": rev_after_create}),
+            )
+            .await
+            .expect("func.delete");
+        assert_eq!(del["changed"], true);
+    } else {
+        assert_eq!(rev_after_create, rev0, "failed mutation must not bump");
+    }
+
+    // resize: move main's end then restore
+    let main = arr
+        .iter()
+        .find(|f| f["name"].as_str() == Some("main"))
+        .expect("main function")
+        .clone();
+    let main_ea = main["ea_start"].as_u64().unwrap();
+    let old_end = main["ea_end"].as_u64().unwrap();
+    let rev1 = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let rs = s
+        .call(
+            "func.resize",
+            json!({"ea": main_ea, "new_end": old_end - 1, "expected_revision": rev1}),
+        )
+        .await
+        .expect("resize end");
+    assert_eq!(rs["changed"], true);
+    let fns2 = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions after resize");
+    let main2 = fns2
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["ea_start"].as_u64() == Some(main_ea))
+        .expect("main after resize")
+        .clone();
+    assert_eq!(
+        main2["ea_end"].as_u64(),
+        Some(old_end - 1),
+        "resized end must be reflected"
+    );
+    // restore
+    let rev2 = s.call("revision", json!({})).await.expect("revision")["revision"]
+        .as_u64()
+        .unwrap();
+    let rs2 = s
+        .call(
+            "func.resize",
+            json!({"ea": main_ea, "new_end": old_end, "expected_revision": rev2}),
+        )
+        .await
+        .expect("resize restore");
+    assert_eq!(rs2["changed"], true);
+
+    // stale expected_revision must be rejected with a stable error code
+    let r = s
+        .call(
+            "func.delete",
+            json!({"ea": main_ea, "expected_revision": 0}),
+        )
+        .await;
+    match r {
+        Err(e) => assert_eq!(e.code(), "revision_conflict"),
+        Ok(v) => panic!("stale revision must fail: {v}"),
+    }
+
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}

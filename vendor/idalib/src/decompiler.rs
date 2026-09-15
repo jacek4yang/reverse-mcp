@@ -67,6 +67,12 @@ impl<'a> CFunction<'a> {
         unsafe { idalib_hexrays_cfunc_pseudocode(self.ptr) }
     }
 
+    /// Raw `cfunc_t*` for capability shims (ctree walk, lvars, return type).
+    /// Valid while this `CFunction` is alive.
+    pub fn inner_ptr(&self) -> *mut cfunc_t {
+        self.ptr
+    }
+
     fn as_cfunc(&self) -> &cfunc_t {
         unsafe { self.ptr.as_ref().expect("valid pointer") }
     }

@@ -103,6 +103,41 @@ fn defs() -> Vec<ToolDef> {
             description: "List discovered IDA installations: version, source, decompilers, backend readiness. Use with ida_db open ida_version to pick one.",
             schema: json!({"type": "object"}),
         },
+        ToolDef {
+            name: "ida_metadata",
+            description: "Extended DB metadata: md5/sha256 of the input file, image base, entry points (ordinal/ea/name). TLS callbacks and exception handlers are reported as unsupported when not exposed.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}}}),
+        },
+        ToolDef {
+            name: "ida_imports",
+            description: "Imported modules and import entries (ea, name, ordinal); paginated.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "module": {"type": "integer", "description": "module index; omit for all modules"}, "offset": {"type": "integer"}, "limit": {"type": "integer", "maximum": 1000}}}),
+        },
+        ToolDef {
+            name: "ida_fixups",
+            description: "Fixup/relocation records (ea, kind, flags, base, sel, off, displacement); paginated.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer", "maximum": 1000}}}),
+        },
+        ToolDef {
+            name: "ida_filemap",
+            description: "Map between EA and input-file offset: value + to_ea=false (default) maps EA->offset, to_ea=true maps offset->EA.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "value": {"type": "string", "description": "address or file offset (hex 0x.. or decimal)"}, "to_ea": {"type": "boolean"}}, "required": ["value"]}),
+        },
+        ToolDef {
+            name: "ida_func",
+            description: "Function-structure operations: action=tails (chunks incl. tails), create (start[,end]), delete (ea), resize (ea, new_start/new_end), switch_info (jump table at ea), sp_delta. Mutating actions bump the revision and honour expected_revision.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["tails", "create", "delete", "resize", "switch_info", "sp_delta"]}, "ea": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"}, "new_start": {"type": "string"}, "new_end": {"type": "string"}, "expected_revision": {"type": "integer"}}, "required": ["action"]}),
+        },
+        ToolDef {
+            name: "ida_hr",
+            description: "Hex-Rays structured view: action=cfunc (bounded typed ctree node summaries, lvars with type/width/arg flags, return type) or lvar_rename (ea + var_defea + name; bumps revision).",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["cfunc", "lvar_rename"]}, "ea": {"type": "string"}, "var_defea": {"type": "string"}, "name": {"type": "string"}, "include_ctree": {"type": "boolean"}, "include_lvars": {"type": "boolean"}, "limit": {"type": "integer", "maximum": 50000}, "expected_revision": {"type": "integer"}}, "required": ["ea"]}),
+        },
+        ToolDef {
+            name: "ida_insn",
+            description: "Instruction-level metadata: action=features (canon CF_* feature bits + mnemonic at ea) or demangle (name -> demangled form).",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["features", "demangle"]}, "ea": {"type": "string"}, "name": {"type": "string"}}, "required": ["action"]}),
+        },
     ]
 }
 
@@ -132,6 +167,13 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_result" => tools::tool_result(broker, args).await,
         "ida_segments" => tools::tool_segments(broker, args).await,
         "ida_installations" => tools::tool_installations(broker, args).await,
+        "ida_metadata" => tools::tool_metadata(broker, args).await,
+        "ida_imports" => tools::tool_imports(broker, args).await,
+        "ida_fixups" => tools::tool_fixups(broker, args).await,
+        "ida_filemap" => tools::tool_filemap(broker, args).await,
+        "ida_func" => tools::tool_func(broker, args).await,
+        "ida_hr" => tools::tool_hr(broker, args).await,
+        "ida_insn" => tools::tool_insn(broker, args).await,
         other => Err(rmcp::ErrorData::invalid_params(
             format!("unknown tool '{other}'"),
             None,

@@ -139,6 +139,14 @@ impl IdaBackend for IdaLibBackend {
             comments: true,
             bookmarks: true,
             plugins: true,
+            ctree: decompile,
+            lvars: decompile,
+            microcode: false, // not implemented in #19; honest
+            switches: true,
+            fixups: true,
+            tails: true,
+            sp_delta: true,
+            file_map: true,
         }
     }
 
@@ -404,10 +412,8 @@ impl IdaBackend for IdaLibBackend {
                             let Some(insn) = idb.insn_at(cur) else { break };
                             if insn.is_call() {
                                 for i in 0..insn.operand_count() {
-                                    if let Some(op) = insn.operand(i) {
-                                        if let Some(target) = op.addr() {
-                                            callees.push(target);
-                                        }
+                                    if let Some(target) = insn.operand(i).and_then(|op| op.addr()) {
+                                        callees.push(target);
                                     }
                                 }
                                 // also code xrefs from the call site
@@ -576,6 +582,336 @@ impl IdaBackend for IdaLibBackend {
         })
     }
 
+    // ---- #19: database / binary metadata ----
+
+    fn db_metadata(&self) -> Result<Value> {
+        let idb = self.idb()?;
+        let meta = idb.meta();
+        // retrieve_input_file_md5/sha256 write into caller buffers and
+        // return false when the hash is unavailable.
+        let hash_hex = |ok: bool, buf: &mut [u8]| -> Option<String> {
+            if ok {
+                Some(buf.iter().map(|b| format!("{b:02x}")).collect())
+            } else {
+                None
+            }
+        };
+        let mut md5buf = [0u8; 16];
+        let md5 = unsafe {
+            let ok = idalib::ffi::nalt::retrieve_input_file_md5(md5buf.as_mut_ptr());
+            hash_hex(ok, &mut md5buf)
+        };
+        let mut shabuf = [0u8; 32];
+        let sha256 = unsafe {
+            let ok = idalib::ffi::nalt::retrieve_input_file_sha256(shabuf.as_mut_ptr());
+            hash_hex(ok, &mut shabuf)
+        };
+        let entries: Vec<Value> = idb
+            .entries()
+            .map(|(ordinal, ea, name)| json!({"ordinal": ordinal, "ea": ea, "name": name}))
+            .collect();
+        Ok(json!({
+            "md5": md5,
+            "sha256": sha256,
+            "imagebase": idalib::caps::imagebase(),
+            "entry_count": entries.len(),
+            "entries": entries,
+            "tls_callbacks": Value::Null,
+            "tls_callbacks_supported": false,
+            "exception_handlers_supported": false,
+            "processor": meta.procname(),
+            "bits": if meta.is_64bit() { 64 } else if meta.is_32bit_exactly() { 32 } else { 16 },
+        }))
+    }
+
+    fn imports(&self, module: Option<usize>, offset: usize, limit: usize) -> Result<Value> {
+        let _ = self.idb()?;
+        let qty = idalib::caps::import_module_qty();
+        let mut modules = Vec::new();
+        for idx in 0..qty {
+            if module.is_some_and(|want| idx != want) {
+                continue;
+            }
+            let name = idalib::caps::import_module_name(idx).unwrap_or_default();
+            let entries = idalib::caps::enum_imports(idx)
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .map(|e| json!({"ea": e.ea, "name": e.name, "ordinal": e.ord}))
+                .collect::<Vec<_>>();
+            modules.push(json!({"index": idx, "name": name, "entries": entries}));
+        }
+        Ok(json!({"modules": modules, "module_count": qty}))
+    }
+
+    fn fixups(&self, offset: usize, limit: usize) -> Result<Value> {
+        let _ = self.idb()?;
+        let all = idalib::caps::fixups(offset.saturating_add(limit));
+        let total = all.len();
+        let page: Vec<Value> = all
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|f| {
+                json!({
+                    "ea": f.ea,
+                    "kind": f.kind,
+                    "flags": f.flags,
+                    "base": f.base,
+                    "sel": f.sel,
+                    "off": f.off,
+                    "displacement": f.displacement,
+                })
+            })
+            .collect();
+        Ok(json!({"total": total, "fixups": page}))
+    }
+
+    fn file_map(&self, value: u64, to_ea: bool) -> Result<Value> {
+        let _ = self.idb()?;
+        if to_ea {
+            match idalib::caps::ea_of_file_offset(value as i64) {
+                Some(ea) => Ok(json!({"file_offset": value, "ea": ea})),
+                None => Err(Error::Worker(format!(
+                    "file offset {value:#x} does not map to an address"
+                ))),
+            }
+        } else {
+            match idalib::caps::file_offset_of(value) {
+                Some(off) => Ok(json!({"ea": value, "file_offset": off})),
+                None => Err(Error::Worker(format!(
+                    "address {value:#x} does not map into the input file"
+                ))),
+            }
+        }
+    }
+
+    // ---- #19: functions / control flow ----
+
+    fn func_tails(&self, ea: u64) -> Result<Value> {
+        let idb = self.idb()?;
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let fptr = function_ptr(idb, f.start_address())?;
+        let chunks = idalib::caps::func_chunks(fptr);
+        let rows: Vec<Value> = chunks
+            .iter()
+            .map(|c| json!({"start": c.start, "end": c.end, "size": c.end - c.start}))
+            .collect();
+        Ok(json!({
+            "function": f.start_address(),
+            "chunks": rows,
+            "is_tail_target": idalib::caps::is_tail_chunk(ea),
+        }))
+    }
+
+    fn func_create(&mut self, start: u64, end: Option<u64>) -> Result<MutationOutcome> {
+        let _ = self.idb()?;
+        let ok = match end {
+            Some(e) => idalib::caps::add_func_range(start, e),
+            None => idalib::caps::add_func(start),
+        };
+        if !ok {
+            return Err(Error::Worker(format!(
+                "function creation failed at {start:#x}"
+            )));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"start": start, "end": end}),
+        })
+    }
+
+    fn func_delete(&mut self, ea: u64) -> Result<MutationOutcome> {
+        let _ = self.idb()?;
+        let ok = idalib::caps::del_func(ea);
+        if !ok {
+            return Err(Error::Worker(format!(
+                "function deletion failed at {ea:#x}"
+            )));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"ea": ea}),
+        })
+    }
+
+    fn func_resize(
+        &mut self,
+        ea: u64,
+        new_start: Option<u64>,
+        new_end: Option<u64>,
+    ) -> Result<MutationOutcome> {
+        let _ = self.idb()?;
+        let mut detail = json!({"ea": ea});
+        let mut changed = false;
+        if let Some(ns) = new_start {
+            let code = idalib::caps::set_func_start(ea, ns);
+            detail["start_move_code"] = json!(code);
+            changed = true;
+        }
+        if let Some(ne) = new_end {
+            if !idalib::caps::set_func_end(ea, ne) {
+                return Err(Error::Worker(format!(
+                    "set_func_end failed at {ea:#x} -> {ne:#x}"
+                )));
+            }
+            detail["end"] = json!(ne);
+            changed = true;
+        }
+        if !changed {
+            return Err(Error::Worker(
+                "func_resize requires new_start and/or new_end".into(),
+            ));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail,
+        })
+    }
+
+    fn func_switch_info(&self, ea: u64) -> Result<Value> {
+        let _ = self.idb()?;
+        match idalib::caps::switch_info(ea) {
+            Some(s) => Ok(json!({
+                "ea": s.jump_ea,
+                "flags": s.flags,
+                "jump_table": s.jumps,
+                "value_table": s.values,
+                "default_jump": s.defjump,
+                "elbase": s.elbase,
+                "ncases": s.ncases,
+                "jcases": s.jcases,
+                "lowcase": s.lowcase,
+                "regnum": s.regnum,
+                "jtable_element_size": s.jtable_element_size,
+                "vtable_element_size": s.vtable_element_size,
+                "start_ea": s.startea,
+            })),
+            None => Err(Error::Worker(format!("no switch information at {ea:#x}"))),
+        }
+    }
+
+    fn func_sp_delta(&self, ea: u64) -> Result<Value> {
+        let idb = self.idb()?;
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let fptr = function_ptr(idb, f.start_address())?;
+        Ok(json!({
+            "ea": ea,
+            "sp_delta": idalib::caps::sp_delta(fptr, ea),
+        }))
+    }
+
+    // ---- #19: Hex-Rays ----
+
+    fn hr_cfunc(
+        &self,
+        ea: u64,
+        include_ctree: bool,
+        include_lvars: bool,
+        limit: usize,
+    ) -> Result<Value> {
+        let idb = self.idb()?;
+        if !idb.decompiler_available() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays decompiler not available".into(),
+            });
+        }
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let cf = idb.decompile(&f).map_err(err)?;
+        let cfptr = cf.inner_ptr();
+
+        let out = json!({
+            "function": f.name().unwrap_or_default(),
+            "ea": f.start_address(),
+            "return_type": idalib::caps::func_return_type(cfptr),
+        });
+        let mut out = out;
+        if include_ctree {
+            let (rows, truncated) = idalib::caps::ctree_rows(cfptr, limit);
+            out["ctree"] = json!(rows);
+            out["ctree_truncated"] = json!(truncated);
+        }
+        if include_lvars {
+            let (rows, truncated) = idalib::caps::lvar_rows(cfptr, limit);
+            out["lvars"] = json!(rows);
+            out["lvars_truncated"] = json!(truncated);
+        }
+        Ok(out)
+    }
+
+    fn hr_lvar_rename(
+        &mut self,
+        ea: u64,
+        var_defea: u64,
+        new_name: &str,
+    ) -> Result<MutationOutcome> {
+        let idb = self.idb()?;
+        if !idb.decompiler_available() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays decompiler not available".into(),
+            });
+        }
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let func_ea = f.start_address();
+        let func_name = f.name().unwrap_or_default();
+        let cf = idb.decompile(&f).map_err(err)?;
+        let ok = idalib::caps::lvar_rename(cf.inner_ptr(), var_defea, new_name);
+        if !ok {
+            return Err(Error::Worker(format!(
+                "lvar rename failed: no lvar defined at {var_defea:#x}"
+            )));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"function": func_ea, "name": func_name, "var_defea": var_defea, "new": new_name}),
+        })
+    }
+
+    // ---- #19: instructions / names ----
+
+    fn insn_features(&self, ea: u64) -> Result<Value> {
+        let _ = self.idb()?;
+        Ok(json!({
+            "ea": ea,
+            "features": idalib::caps::insn_feature(ea),
+            "mnemonic": idalib::caps::insn_mnemonic(ea),
+        }))
+    }
+
+    fn demangle_name(&self, name: &str) -> Result<Value> {
+        let _ = self.idb()?;
+        match idalib::caps::demangle_name(name) {
+            Some(demangled) => Ok(json!({
+                "name": name,
+                "demangled": demangled,
+                "changed": true,
+            })),
+            None => Ok(json!({
+                "name": name,
+                "demangled": name,
+                "changed": false,
+            })),
+        }
+    }
+
     fn analyze_wait(&mut self) -> Result<Value> {
         if let Some(idb) = self.idb.as_mut() {
             idb.auto_wait();
@@ -598,6 +934,15 @@ impl IdaBackend for IdaLibBackend {
         let dir = std::env::var("IDAUSR").unwrap_or_default();
         Ok(json!({"plugins_dir": dir, "note": "enumerate via filesystem"}))
     }
+}
+
+/// Raw `func_t*` for the function starting at `ea` (for cap shims that the
+/// safe `Function` wrapper does not cover).
+fn function_ptr(idb: &IDB, ea: u64) -> Result<*mut idalib::ffi::func::func_t> {
+    let f = idb
+        .function_at(ea)
+        .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+    Ok(f.raw_ptr())
 }
 
 fn xref_kind(x: &idalib::xref::XRef<'_>) -> String {

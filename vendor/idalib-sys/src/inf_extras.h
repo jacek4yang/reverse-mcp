@@ -145,9 +145,9 @@ bool idalib_inf_merge_strlits() { return inf_merge_strlits(); }
 
 uval_t idalib_inf_get_baseaddr()  { return inf_get_baseaddr(); }
 
-sel_t idalib_inf_get_start_ss()  { return inf_get_start_ss(); }
+uint64_t idalib_inf_get_start_ss()  { return (uint64_t)inf_get_start_ss(); }
 
-sel_t idalib_inf_get_start_cs()  { return inf_get_start_cs(); }
+uint64_t idalib_inf_get_start_cs()  { return (uint64_t)inf_get_start_cs(); }
 
 ea_t idalib_inf_get_start_ip()  { return inf_get_start_ip(); }
 

@@ -90,6 +90,10 @@ version = "1"
 [dependencies.idalib-sys]
 path = "../idalib-sys"
 
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
 [dependencies.thiserror]
 version = "1"
 

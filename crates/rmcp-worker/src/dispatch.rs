@@ -282,6 +282,118 @@ fn dispatch(
             let out = need_backend(state)?.analyze_wait()?;
             Ok(out)
         }
+        // ---- #19: metadata / imports / fixups / file map ----
+        "db.metadata" => need_backend(state)?.db_metadata(),
+        "imports.list" => {
+            let module = match params.get("module") {
+                Some(v) if !v.is_null() => Some(
+                    v.as_u64()
+                        .ok_or_else(|| Error::Worker("bad 'module'".into()))?
+                        as usize,
+                ),
+                _ => None,
+            };
+            let offset = params.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+            need_backend(state)?.imports(module, offset, limit)
+        }
+        "fixups.list" => {
+            let offset = params.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
+            need_backend(state)?.fixups(offset, limit)
+        }
+        "file.map" => {
+            let to_ea = params
+                .get("to_ea")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let value = if params.get("value").is_some() {
+                ea_param(&params, "value")?
+            } else {
+                ea_param(&params, "ea")?
+            };
+            need_backend(state)?.file_map(value, to_ea)
+        }
+        // ---- #19: functions / control flow ----
+        "func.tails" => {
+            let ea = ea_param(&params, "ea")?;
+            need_backend(state)?.func_tails(ea)
+        }
+        "func.create" => {
+            let start = ea_param(&params, "start")?;
+            let end = match params.get("end") {
+                Some(v) if !v.is_null() => Some(ea_param(&params, "end")?),
+                _ => None,
+            };
+            check_revision(&params, need_backend(state)?)?;
+            let out = need_backend(state)?.func_create(start, end)?;
+            serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
+        }
+        "func.delete" => {
+            let ea = ea_param(&params, "ea")?;
+            check_revision(&params, need_backend(state)?)?;
+            let out = need_backend(state)?.func_delete(ea)?;
+            serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
+        }
+        "func.resize" => {
+            let ea = ea_param(&params, "ea")?;
+            let new_start = match params.get("new_start") {
+                Some(v) if !v.is_null() => Some(ea_param(&params, "new_start")?),
+                _ => None,
+            };
+            let new_end = match params.get("new_end") {
+                Some(v) if !v.is_null() => Some(ea_param(&params, "new_end")?),
+                _ => None,
+            };
+            check_revision(&params, need_backend(state)?)?;
+            let out = need_backend(state)?.func_resize(ea, new_start, new_end)?;
+            serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
+        }
+        "func.switch_info" => {
+            let ea = ea_param(&params, "ea")?;
+            need_backend(state)?.func_switch_info(ea)
+        }
+        "func.sp_delta" => {
+            let ea = ea_param(&params, "ea")?;
+            need_backend(state)?.func_sp_delta(ea)
+        }
+        // ---- #19: Hex-Rays ----
+        "hr.cfunc" => {
+            let ea = ea_param(&params, "ea")?;
+            let include_ctree = params
+                .get("include_ctree")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let include_lvars = params
+                .get("include_lvars")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(2000) as usize;
+            need_backend(state)?.hr_cfunc(ea, include_ctree, include_lvars, limit)
+        }
+        "hr.lvar_rename" => {
+            let ea = ea_param(&params, "ea")?;
+            let var_defea = ea_param(&params, "var_defea")?;
+            let name = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Worker("missing name".into()))?;
+            check_revision(&params, need_backend(state)?)?;
+            let out = need_backend(state)?.hr_lvar_rename(ea, var_defea, name)?;
+            serde_json::to_value(out).map_err(|e| Error::Ipc(e.to_string()))
+        }
+        // ---- #19: instructions / names ----
+        "insn.features" => {
+            let ea = ea_param(&params, "ea")?;
+            need_backend(state)?.insn_features(ea)
+        }
+        "names.demangle" => {
+            let name = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Worker("missing name".into()))?;
+            need_backend(state)?.demangle_name(name)
+        }
         "list_plugins" => need_backend(state)?.list_plugins(),
         "run_plugin" => {
             let plugin = params
@@ -374,5 +486,166 @@ mod tests {
         );
         let out = r.result.expect("omitted expected_revision must pass");
         assert_eq!(out["revision_after"], 1);
+    }
+
+    // ---- #19 method tests (mock backend) ----
+
+    #[test]
+    fn db_metadata_reports_hashes_and_entries() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(&mut state, 2, "db.metadata", json!({}));
+        let out = r.result.expect("db.metadata must pass");
+        assert_eq!(out["md5"].as_str().map(|s| s.len()), Some(32));
+        assert_eq!(out["sha256"].as_str().map(|s| s.len()), Some(64));
+        assert_eq!(out["imagebase"], 0x400000);
+        assert_eq!(out["entry_count"], 1);
+        // honest reporting of unexposed items
+        assert_eq!(out["tls_callbacks_supported"], false);
+        assert_eq!(out["exception_handlers_supported"], false);
+    }
+
+    #[test]
+    fn imports_list_is_bounded_and_shaped() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(&mut state, 2, "imports.list", json!({"limit": 1}));
+        let out = r.result.expect("imports.list must pass");
+        assert_eq!(out["module_count"], 1);
+        let entries = out["modules"][0]["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 1, "limit must bound entries");
+        assert!(entries[0]["name"].as_str().is_some());
+    }
+
+    #[test]
+    fn fixups_list_and_file_map_roundtrip() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(&mut state, 2, "fixups.list", json!({}));
+        let out = r.result.expect("fixups.list must pass");
+        assert_eq!(out["total"], 2);
+
+        // EA -> file offset -> EA roundtrip
+        let r = send(&mut state, 3, "file.map", json!({"value": "0x401000"}));
+        let out = r.result.expect("file.map ea->offset must pass");
+        assert_eq!(out["file_offset"], 0x1400);
+        let off = out["file_offset"].as_u64().unwrap();
+        let r = send(
+            &mut state,
+            4,
+            "file.map",
+            json!({"value": off, "to_ea": true}),
+        );
+        let out = r.result.expect("file.map offset->ea must pass");
+        assert_eq!(out["ea"], 0x401000);
+
+        // unmapped address errors
+        let r = send(&mut state, 5, "file.map", json!({"value": "0x1"}));
+        assert!(r.error.is_some(), "unmapped value must error");
+    }
+
+    #[test]
+    fn func_create_delete_and_tails() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(&mut state, 2, "revision", json!({}));
+        assert_eq!(r.result.unwrap()["revision"], 0);
+
+        let r = send(&mut state, 3, "func.create", json!({"start": "0x401500"}));
+        let out = r.result.expect("func.create must pass");
+        assert_eq!(out["changed"], true);
+        assert_eq!(out["revision_after"], 1);
+
+        let r = send(&mut state, 4, "func.tails", json!({"ea": "0x401500"}));
+        let out = r.result.expect("func.tails must pass");
+        assert_eq!(out["chunks"].as_array().unwrap().len(), 1);
+
+        let r = send(
+            &mut state,
+            5,
+            "func.delete",
+            json!({"ea": "0x401500", "expected_revision": 1}),
+        );
+        let out = r.result.expect("func.delete must pass");
+        assert_eq!(out["revision_after"], 2);
+
+        // deleting a non-function address fails
+        let r = send(&mut state, 6, "func.delete", json!({"ea": "0xdead"}));
+        assert!(r.error.is_some());
+    }
+
+    #[test]
+    fn func_switch_info_and_sp_delta() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(&mut state, 2, "func.switch_info", json!({"ea": "0x401310"}));
+        let out = r.result.expect("switch_info must pass");
+        assert_eq!(out["ncases"], 4);
+
+        let r = send(&mut state, 3, "func.switch_info", json!({"ea": "0x401000"}));
+        assert!(r.error.is_some(), "non-switch address must error");
+
+        let r = send(&mut state, 4, "func.sp_delta", json!({"ea": "0x401100"}));
+        let out = r.result.expect("sp_delta must pass");
+        assert_eq!(out["sp_delta"], -8);
+    }
+
+    #[test]
+    fn hr_cfunc_and_lvar_rename() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(
+            &mut state,
+            2,
+            "hr.cfunc",
+            json!({"ea": "0x401200", "limit": 1}),
+        );
+        let out = r.result.expect("hr.cfunc must pass");
+        assert!(out["ctree"].as_array().unwrap().len() <= 1);
+        assert_eq!(out["lvars_truncated"], false);
+
+        // decompile-disabled backend reports capability_unavailable
+        let mut state2 = WorkerState::new();
+        state2.backend = Some(Box::new(rmcp_ida::MockBackend::new().without_decompile()));
+        let r = handle(
+            &mut state2,
+            WorkerRequest {
+                id: 3,
+                method: "hr.cfunc".into(),
+                params: json!({"ea": "0x401200"}),
+            },
+        );
+        assert_eq!(r.error.unwrap().code, "capability_unavailable");
+
+        let r = send(
+            &mut state,
+            4,
+            "hr.lvar_rename",
+            json!({"ea": "0x401200", "var_defea": "0x401200", "name": "buf"}),
+        );
+        let out = r.result.expect("hr.lvar_rename must pass");
+        assert_eq!(out["changed"], true);
+    }
+
+    #[test]
+    fn insn_features_and_demangle() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = send(&mut state, 2, "insn.features", json!({"ea": "0x401000"}));
+        let out = r.result.expect("insn.features must pass");
+        assert_eq!(out["mnemonic"], "mov");
+
+        let r = send(&mut state, 3, "names.demangle", json!({"name": "_Z3fooi"}));
+        let out = r.result.expect("names.demangle must pass");
+        assert_eq!(out["changed"], true);
+
+        let r = send(
+            &mut state,
+            4,
+            "names.demangle",
+            json!({"name": "plain_name"}),
+        );
+        let out = r.result.expect("demangle passthrough must pass");
+        assert_eq!(out["changed"], false);
     }
 }

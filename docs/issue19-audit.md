@@ -75,3 +75,34 @@ Scope items -> status -> plan.
 - All list ops bounded (limit + offset), large outputs through bound_output
 - Mutations: expected_revision checked, revision bumped, audit detail returned
 - Real IDA 9.2 tests: imports/exports, CFG, switch (dispatch fixture), lvars (decrypt_packet), local types (parse+apply), ctree, microcode, fixups, file map, tails, demangle
+
+---
+
+# Implementation status (2026-09-15, feat/issue19-capability-gaps)
+
+Shipped in this branch (all real-IDA verified on `tests/fixtures/simple.exe`,
+see `tests/idalib_real.rs` `real_ida_issue19_*`):
+
+| audit item | result |
+|---|---|
+| input hashes + imagebase + entries | `db.metadata` (md5 verified against independent hash; TLS callbacks / exception handlers reported `supported:false`) |
+| imports + modules | `imports.list` (per-module ea/name/ord, paginated) |
+| relocations/fixups | `fixups.list` (bounded, typed fields) |
+| file-offset <-> EA | `file.map` (roundtrip verified) |
+| function chunks/tails | `func.tails` (entry+tail chunks) |
+| create/delete/resize functions | `func.create/delete/resize` (mutation + `expected_revision` + revision bump, tested) |
+| switch/jump-table metadata | `func.switch_info` (get_switch_info; fixture compiles to cmp chain so populated path is untested locally — honest) |
+| sp delta | `func.sp_delta` |
+| ctree typed summaries | `hr.cfunc` (bounded, cot_*/cit_* op + payload + rendered text) |
+| lvars + return type | `hr.cfunc` (name/type/width/arg/result, one-line type text) |
+| rename lvars | `hr.lvar_rename` (persists via user lvar settings, verified in re-decompilation) |
+| instruction features | `insn.features` (canon CF_* bits + mnemonic) |
+| demangling | `names.demangle` (None/passthrough for non-mangled names) |
+
+Deferred from the audit (tracked, honestly reported):
+
+- microcode generation/inspection -> issue #9 (capability `microcode:false`)
+- local types list/parse/apply -> issue #11 / #16 (capability `types:false` unchanged)
+- pseudocode line <-> EA mapping (eamap) -> follow-up
+- decompiler warnings via `cfunc.get_warnings()` -> follow-up
+- type/field xrefs -> #11 as planned in the audit

@@ -12,11 +12,21 @@ under "Shipped" does not work yet.
 - Real IDA 9.2 backend: open/save/close, auto-analysis, functions, segments,
   strings, names, bytes read, xrefs (to/from), disassembly, Hex-Rays
   decompilation, rename, comments, bookmarks, plugins.
+- #19 native capability layer (real-IDA verified on `tests/fixtures/simple.exe`):
+  db.metadata (md5/sha256/imagebase/entries), imports.list (per-module entries),
+  fixups.list, file.map (EA<->file offset), func.tails (chunks incl. tails),
+  func.create/delete/resize (mutation + revision), func.sp_delta,
+  insn.features (canon CF_* bits + mnemonic), names.demangle,
+  hr.cfunc (bounded typed ctree node summaries with rendered text, lvars with
+  type/width/arg flags, return type), hr.lvar_rename (persists via user lvar
+  settings, visible in re-decompilation). Capabilities extended honestly with
+  `ctree`, `lvars`, `microcode:false`, `switches`, `fixups`, `tails`,
+  `sp_delta`, `file_map`.
 - Multi-version discovery with per-version backend readiness; refused fallback.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 17 tools.
+- MCP stdio transport, 24 tools.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 
@@ -28,9 +38,19 @@ under "Shipped" does not work yet.
 - `ida_types action=set`: returns `capability_unavailable`; only `list`/`get`
   of local types are wired, and even those are partial (til access via the
   vendored binding is limited).
-- `imports_exports: true` in capabilities is optimistic — dedicated
-  import/export enumeration tools do not exist yet; imports are only visible
-  through names/xrefs.
+- `microcode: false` — microcode generation/inspection is NOT implemented in
+  #19 and is reported as unsupported in capabilities (planned in #9).
+- `func.switch_info`: implemented against `get_switch_info()`, but on the
+  test fixture the switch compiles to a cmp chain (no jump table), so no
+  address carries switch info there; a real jump-table switch is required to
+  exercise the populated path.
+- TLS callbacks and exception handlers are not exposed by the SDK surface used
+  here; `db.metadata` reports `tls_callbacks_supported:false` and
+  `exception_handlers_supported:false` explicitly.
+- hr.lvar_rename targets a lvar by its locator definition EA as reported in
+  `hr.cfunc` lvars; renaming a lvar that shares its defea with another lvar
+  (e.g. two args keyed to the entry) may rename the matching locator slot
+  rather than a specific one.
 - stdio only: no Streamable HTTP transport yet.
 - No worker crash recovery yet: an unexpected worker death fails pending
   requests; the caller must close and reopen the DB. No state machine, no

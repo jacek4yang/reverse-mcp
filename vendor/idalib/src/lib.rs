@@ -73,11 +73,17 @@
 //! ```
 //!
 #![allow(clippy::needless_lifetimes)]
+// Raw SDK pointers legitimately escape the cap shims (`raw_ptr`/`inner_ptr`,
+// `caps::func_chunks`, `caps::sp_delta`, `caps::ctree_rows`, ...); the
+// caller contract (pointer valid only while the owning IDB is open) is
+// documented at each site.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use std::marker::PhantomData;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 pub mod bookmarks;
+pub mod caps;
 pub mod decompiler;
 pub mod func;
 pub mod idb;

@@ -62,6 +62,8 @@ pub struct InsnInfo {
 }
 
 /// What a backend can do — drives `ida_capabilities` and honest errors.
+/// Fields added for #19 are declared honestly: a backend that does not
+/// implement a capability reports `false` rather than guessing.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct Capabilities {
     pub decompile: bool,
@@ -72,6 +74,22 @@ pub struct Capabilities {
     pub comments: bool,
     pub bookmarks: bool,
     pub plugins: bool,
+    /// Typed ctree node summaries (`hr.cfunc`).
+    pub ctree: bool,
+    /// Local variable summaries + rename (`hr.cfunc` / `hr.lvar_rename`).
+    pub lvars: bool,
+    /// Microcode generation/inspection (`hr.microcode`).
+    pub microcode: bool,
+    /// Switch/jump-table metadata (`func.switch_info`).
+    pub switches: bool,
+    /// Fixup/relocation enumeration (`fixups.list`).
+    pub fixups: bool,
+    /// Function chunk/tail enumeration (`func.tails`).
+    pub tails: bool,
+    /// Per-instruction SP delta (`func.sp_delta`).
+    pub sp_delta: bool,
+    /// File-offset <-> EA mapping (`file.map`).
+    pub file_map: bool,
 }
 
 /// Mutation results.
@@ -131,6 +149,73 @@ pub trait IdaBackend: Send {
     fn types(&self, name: Option<&str>) -> Result<Value>;
 
     fn set_type(&mut self, ea: u64, type_decl: &str) -> Result<MutationOutcome>;
+
+    // ---- #19: database / binary metadata ----
+
+    /// Extended DB metadata: input hashes, image base, entry points.
+    fn db_metadata(&self) -> Result<Value>;
+
+    /// Imports per module (bounded). `module` None lists all modules.
+    fn imports(&self, module: Option<usize>, offset: usize, limit: usize) -> Result<Value>;
+
+    /// Fixup/relocation records (bounded).
+    fn fixups(&self, offset: usize, limit: usize) -> Result<Value>;
+
+    /// File-offset <-> EA mapping. `to_ea == false` maps EA -> file offset.
+    fn file_map(&self, value: u64, to_ea: bool) -> Result<Value>;
+
+    // ---- #19: functions / control flow ----
+
+    /// Function chunks (entry + tail chunks) of the function containing `ea`.
+    fn func_tails(&self, ea: u64) -> Result<Value>;
+
+    /// Create a function at `start`.
+    fn func_create(&mut self, start: u64, end: Option<u64>) -> Result<MutationOutcome>;
+
+    /// Delete the function containing `ea`.
+    fn func_delete(&mut self, ea: u64) -> Result<MutationOutcome>;
+
+    /// Resize (move start/end of) the function containing `ea`.
+    fn func_resize(
+        &mut self,
+        ea: u64,
+        new_start: Option<u64>,
+        new_end: Option<u64>,
+    ) -> Result<MutationOutcome>;
+
+    /// Switch/jump-table metadata for the indirect jump at `ea`.
+    fn func_switch_info(&self, ea: u64) -> Result<Value>;
+
+    /// SP delta at `ea` inside the function containing it.
+    fn func_sp_delta(&self, ea: u64) -> Result<Value>;
+
+    // ---- #19: Hex-Rays ----
+
+    /// Bounded ctree summaries + lvars + return type of a decompiled function.
+    /// `include_ctree`/`include_lvars` gate the (potentially large) lists.
+    fn hr_cfunc(
+        &self,
+        ea: u64,
+        include_ctree: bool,
+        include_lvars: bool,
+        limit: usize,
+    ) -> Result<Value>;
+
+    /// Rename a local variable of the decompiled function at `ea`.
+    fn hr_lvar_rename(
+        &mut self,
+        ea: u64,
+        var_defea: u64,
+        new_name: &str,
+    ) -> Result<MutationOutcome>;
+
+    // ---- #19: instructions / names ----
+
+    /// Canon feature bits (CF_*) and mnemonic of the instruction at `ea`.
+    fn insn_features(&self, ea: u64) -> Result<Value>;
+
+    /// Demangle a name (returns the input when demangling does not apply).
+    fn demangle_name(&self, name: &str) -> Result<Value>;
 
     fn analyze_wait(&mut self) -> Result<Value>;
     fn run_plugin(&mut self, plugin: &str, args: Option<&str>) -> Result<Value>;

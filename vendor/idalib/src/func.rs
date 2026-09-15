@@ -180,6 +180,13 @@ impl<'a> Function<'a> {
         self.ptr
     }
 
+    /// Raw SDK pointer for capability shims that need `func_t*`
+    /// (e.g. `get_sp_delta`, chunk iteration). The pointer is only valid
+    /// while the owning IDB is open.
+    pub fn raw_ptr(&self) -> *mut func_t {
+        self.ptr
+    }
+
     fn as_range_t(&self) -> *const range_t {
         self.ptr.cast()
     }

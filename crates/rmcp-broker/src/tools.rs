@@ -447,6 +447,232 @@ pub async fn tool_segments(broker: &Broker, args: Value) -> Result<Value, McpErr
     Ok(json!({"db": db, "segments": out}))
 }
 
+/// ida_metadata — extended DB metadata: input hashes, image base, entry
+/// points (issue #19 `db.metadata`). TLS callbacks / exception handlers are
+/// reported as unsupported when the backend does not expose them.
+pub async fn tool_metadata(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = s.call("db.metadata", json!({})).await.map_err(err_from)?;
+    Ok(json!({"db": db, "metadata": bound_output(broker, "ida_metadata", out)}))
+}
+
+/// ida_imports — imported modules and entries (issue #19 `imports.list`).
+pub async fn tool_imports(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = s
+        .call(
+            "imports.list",
+            json!({
+                "module": args.get("module"),
+                "offset": arg_u64(&args, "offset", 0),
+                "limit": arg_u64(&args, "limit", 100).min(1000),
+            }),
+        )
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "imports": bound_output(broker, "ida_imports", out)}))
+}
+
+/// ida_fixups — fixup/relocation records (issue #19 `fixups.list`).
+pub async fn tool_fixups(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = s
+        .call(
+            "fixups.list",
+            json!({
+                "offset": arg_u64(&args, "offset", 0),
+                "limit": arg_u64(&args, "limit", 100).min(1000),
+            }),
+        )
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "fixups": bound_output(broker, "ida_fixups", out)}))
+}
+
+/// ida_filemap — EA <-> input-file offset mapping (issue #19 `file.map`).
+pub async fn tool_filemap(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let value = args.get("value").and_then(parse_ea).ok_or_else(|| {
+        mcp_code(
+            "invalid_args",
+            "filemap requires 'value' (ea or file offset)",
+        )
+    })?;
+    let to_ea = args.get("to_ea").and_then(|v| v.as_bool()).unwrap_or(false);
+    let s = session.lock().await;
+    let out = s
+        .call("file.map", json!({"value": value, "to_ea": to_ea}))
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "map": out}))
+}
+
+/// ida_func — function-structure operations: tails (chunks), create,
+/// delete, resize, switch info, sp delta (issue #19 function module).
+/// Mutating actions bump the revision and honour expected_revision.
+pub async fn tool_func(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let action = arg_str(&args, "action").unwrap_or("tails");
+    let s = session.lock().await;
+    let out = match action {
+        "tails" => {
+            let ea = args
+                .get("ea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "tails requires 'ea'"))?;
+            s.call("func.tails", json!({"ea": ea}))
+                .await
+                .map_err(err_from)?
+        }
+        "create" => {
+            let start = args
+                .get("start")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "create requires 'start'"))?;
+            s.call(
+                "func.create",
+                json!({"start": start, "end": args.get("end"), "expected_revision": args.get("expected_revision")}),
+            )
+            .await
+            .map_err(err_from)?
+        }
+        "delete" => {
+            let ea = args
+                .get("ea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "delete requires 'ea'"))?;
+            s.call(
+                "func.delete",
+                json!({"ea": ea, "expected_revision": args.get("expected_revision")}),
+            )
+            .await
+            .map_err(err_from)?
+        }
+        "resize" => {
+            let ea = args
+                .get("ea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "resize requires 'ea'"))?;
+            s.call(
+                "func.resize",
+                json!({"ea": ea, "new_start": args.get("new_start"), "new_end": args.get("new_end"), "expected_revision": args.get("expected_revision")}),
+            )
+            .await
+            .map_err(err_from)?
+        }
+        "switch_info" => {
+            let ea = args
+                .get("ea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "switch_info requires 'ea'"))?;
+            s.call("func.switch_info", json!({"ea": ea}))
+                .await
+                .map_err(err_from)?
+        }
+        "sp_delta" => {
+            let ea = args
+                .get("ea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "sp_delta requires 'ea'"))?;
+            s.call("func.sp_delta", json!({"ea": ea}))
+                .await
+                .map_err(err_from)?
+        }
+        other => {
+            return Err(mcp_code(
+                "invalid_args",
+                &format!(
+                    "unknown func action '{other}' (tails|create|delete|resize|switch_info|sp_delta)"
+                ),
+            ));
+        }
+    };
+    Ok(json!({"db": db, "action": action, "result": out}))
+}
+
+/// ida_hr — Hex-Rays ctree/lvar summaries and lvar rename
+/// (issue #19 `hr.cfunc` / `hr.lvar_rename`), bounded by `limit`.
+pub async fn tool_hr(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let ea = args
+        .get("ea")
+        .and_then(parse_ea)
+        .ok_or_else(|| mcp_code("invalid_args", "hr requires 'ea'"))?;
+    let s = session.lock().await;
+    match arg_str(&args, "action").unwrap_or("cfunc") {
+        "cfunc" => {
+            let out = s
+                .call(
+                    "hr.cfunc",
+                    json!({
+                        "ea": ea,
+                        "include_ctree": args.get("include_ctree").and_then(|v| v.as_bool()).unwrap_or(true),
+                        "include_lvars": args.get("include_lvars").and_then(|v| v.as_bool()).unwrap_or(true),
+                        "limit": arg_u64(&args, "limit", 2000).min(50000),
+                    }),
+                )
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "cfunc": bound_output(broker, "ida_hr", out)}))
+        }
+        "lvar_rename" => {
+            let var_defea = args
+                .get("var_defea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "lvar_rename requires 'var_defea'"))?;
+            let name = arg_str(&args, "name")
+                .ok_or_else(|| mcp_code("invalid_args", "lvar_rename requires 'name'"))?;
+            let out = s
+                .call(
+                    "hr.lvar_rename",
+                    json!({"ea": ea, "var_defea": var_defea, "name": name, "expected_revision": args.get("expected_revision")}),
+                )
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "outcome": out}))
+        }
+        other => Err(mcp_code(
+            "invalid_args",
+            &format!("unknown hr action '{other}' (cfunc|lvar_rename)"),
+        )),
+    }
+}
+
+/// ida_insn — instruction metadata: canon feature bits + mnemonic
+/// (issue #19 `insn.features`), plus name demangling (`names.demangle`).
+pub async fn tool_insn(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = match arg_str(&args, "action").unwrap_or("features") {
+        "features" => {
+            let ea = args
+                .get("ea")
+                .and_then(parse_ea)
+                .ok_or_else(|| mcp_code("invalid_args", "features requires 'ea'"))?;
+            s.call("insn.features", json!({"ea": ea}))
+                .await
+                .map_err(err_from)?
+        }
+        "demangle" => {
+            let name = arg_str(&args, "name")
+                .ok_or_else(|| mcp_code("invalid_args", "demangle requires 'name'"))?;
+            s.call("names.demangle", json!({"name": name}))
+                .await
+                .map_err(err_from)?
+        }
+        other => {
+            return Err(mcp_code(
+                "invalid_args",
+                &format!("unknown insn action '{other}' (features|demangle)"),
+            ));
+        }
+    };
+    Ok(json!({"db": db, "result": out}))
+}
+
 /// ida_installations — all discovered IDA installs with version, source,
 /// decompilers and backend readiness, so the agent can pick one explicitly
 /// via `ida_db(action=open, ida_version=...)`.
@@ -475,6 +701,13 @@ async fn run_named(broker: &Broker, tool: &str, args: Value) -> Result<Value, Mc
         "ida_bytes" => tool_bytes(broker, args).await,
         "ida_types" => tool_types(broker, args).await,
         "ida_segments" => tool_segments(broker, args).await,
+        "ida_metadata" => tool_metadata(broker, args).await,
+        "ida_imports" => tool_imports(broker, args).await,
+        "ida_fixups" => tool_fixups(broker, args).await,
+        "ida_filemap" => tool_filemap(broker, args).await,
+        "ida_func" => tool_func(broker, args).await,
+        "ida_hr" => tool_hr(broker, args).await,
+        "ida_insn" => tool_insn(broker, args).await,
         other => Err(mcp_code(
             "invalid_args",
             &format!("batch cannot run '{other}'"),
