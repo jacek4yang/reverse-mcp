@@ -833,6 +833,32 @@ pub async fn tool_type_recovery(broker: &Broker, args: Value) -> Result<Value, M
     Ok(json!({"db": db, "types": out}))
 }
 
+/// ida_intel - #12 binary intelligence: crypto constants, API-hash
+/// resolvers, recovered strings (stack/array). Read-only; results ranked
+/// and bounded.
+pub async fn tool_intel(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let task = arg_str(&args, "task").unwrap_or("crypto_scan").to_string();
+    let method = match task.as_str() {
+        "crypto_scan" => "intel.crypto",
+        "resolve_api_hashes" => "intel.api_hashes",
+        "recover_strings" => "intel.strings",
+        other => {
+            return Err(McpError::invalid_params(
+                format!("unknown task '{other}' (crypto_scan|resolve_api_hashes|recover_strings)"),
+                None,
+            ));
+        }
+    };
+    // Segment scans may exceed the default 2 min on large DBs.
+    let out = s
+        .call_with_timeout(method, args, std::time::Duration::from_secs(600))
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "intel": out}))
+}
+
 /// ida_evidence - #14 structured evidence search over the analysis index.
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries

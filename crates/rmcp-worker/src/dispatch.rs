@@ -6,6 +6,7 @@ use rmcp_core::error::Error;
 use rmcp_core::protocol::{WorkerRequest, WorkerResponse};
 use serde_json::{Value, json};
 
+use crate::crypto;
 use crate::deep;
 use crate::plan;
 use crate::state::WorkerState;
@@ -743,6 +744,65 @@ fn dispatch(
             let out = types::apply_struct(need_backend(state)?, name, &fields)?;
             state.workflow_cache.invalidate_all();
             Ok(out)
+        }
+        // ---- #12: binary intelligence (crypto / API-hash / strings) ----
+        "intel.crypto" => {
+            let max = params
+                .get("max_findings")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50)
+                .clamp(1, 500) as usize;
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            crypto::crypto_scan(need_backend(state)?, &idx, max)
+        }
+        "intel.api_hashes" => {
+            let max = params
+                .get("max_findings")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50)
+                .clamp(1, 500) as usize;
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            crypto::resolve_api_hashes(need_backend(state)?, &idx, max)
+        }
+        "intel.strings" => {
+            let target = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let max = params
+                .get("max_strings")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50)
+                .clamp(1, 500) as usize;
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            crypto::recover_strings(need_backend(state)?, &idx, target, max)
         }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }
