@@ -297,24 +297,44 @@ Results are bounded (`max_findings`/`max_strings`, clamped) and cached per
 DB revision via the workflow cache.
 
 ### ida_deobfuscate
-Deobfuscation analysis (#9): an analysis-only pass engine over one
-function. Passes (each with name/version, confidence, evidence, proposed
-changes, failure reason, deterministic budget):
-- `flatten_detect` 鈥?CFG dispatcher-shape detection (avg in-degree,
+Deobfuscation analysis + explicit transforms (#9 + #46) over one function.
+
+`task=analyze` (default): the #9 analysis-only pass engine. Passes (each
+with name/version, confidence, evidence, proposed changes, failure reason):
+- `flatten_detect` — CFG dispatcher-shape detection (avg in-degree,
   node/edge counts).
-- `opaque_branch` 鈥?constant/self comparisons in ctree plus assembly-level
+- `opaque_branch` — constant/self comparisons in ctree plus assembly-level
   `cmp regX, regX` / `test regX, regX` followed by a conditional jump.
-- `indirect_transfer` 鈥?unresolved `jmp reg` / `call reg` sites.
-- `junk_code` 鈥?redundant store/load round trips (`mov [mem], reg` /
+- `indirect_transfer` — unresolved `jmp reg` / `call reg` sites.
+- `junk_code` — redundant store/load round trips (`mov [mem], reg` /
   `mov reg, [mem]` pairs on one slot), self-moves, `add 0`.
-- `tail_jump` 鈥?`jmp reg` where the register was just assigned (tail-call
+- `tail_jump` — `jmp reg` where the register was just assigned (tail-call
   obfuscation).
 
-SAFETY: analysis-only. No IDB metadata repairs, no byte patches;
-transformations are proposals the agent can apply later through explicit
-mutation tools. `max_passes` (1..16, default 8) bounds the run; a failed
-pass reports its failure reason and leaves the database usable. Regression
-tests assert plain functions do not trigger detectors.
+SAFETY (analyze): analysis-only. No IDB metadata repairs, no byte patches;
+`max_passes` (1..16, default 8) bounds the run; a failed pass reports its
+failure reason and leaves the database usable. Regression tests assert
+plain functions do not trigger detectors.
+
+`task=propose|validate|apply|rollback` (#46 transform framework; every
+mutation is explicit and two-phase — preview and apply are separate calls):
+- `propose` builds a transform plan as JSON data (`kind`:
+  `T1_opaque_branch` / `T2_junk_removal` / `T3_indirect_materialize` /
+  `T4_unflatten`; `T4` reports `requires_microcode` and emits no plan).
+  Patch-level plans NOP verified sites; `MAX_SITES` (16) bounds the plan;
+  `evidence` rows carry per-site facts. Analysis-only.
+- `validate` re-checks the plan against the live DB and returns
+  `valid: true|false` with per-op `rejections` (`outside_target_function`,
+  `inbound_xrefs` — non-flow xrefs into the site range reject the patch,
+  `bytes_unreadable`, `malformed_op`). Never mutates.
+- `apply` takes a snapshot first (rollback token), runs the whole-plan
+  `expected_revision` guard, then applies through the audited mutation
+  machinery (`plan.apply` semantics). Returns `before`/`after` decompile
+  fingerprints (bounded), CFG node/edge counts, and the snapshot pointer.
+  A stale `expected_revision` rejects with `RevisionConflict` and leaves
+  the IDB untouched.
+- `rollback` restores the last snapshot (`ida_mutation` rollback path);
+  the rollback itself is audited and bumps the revision.
 
 ### ida_sig
 Function signatures & cross-IDB comparison (#13). Multi-family

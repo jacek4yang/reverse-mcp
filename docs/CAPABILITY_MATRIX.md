@@ -29,7 +29,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | crypto detection | implemented, real-IDA tested ([crypto](../crates/rmcp-worker/src/crypto.rs)) | n/a | n/a | n/a | n/a | implemented | n/a | implemented | n/a |
 | API hashing | implemented (registry + corpus verification) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
 | string recovery | implemented (stack/array immediates) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
-| deobfuscation/unflattening | partial (analysis-only detection + proposals) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
+| deobfuscation/unflattening | partial (analysis-only detection + proposals) | n/a | n/a | n/a | n/a | implemented (analysis + explicit patch transforms w/ validate+rollback; microcode transforms pending) | n/a | n/a | n/a |
 | signatures/similarity | implemented, real-IDA tested ([signatures](../crates/rmcp-worker/src/signatures.rs)) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | implemented (best in class) |
 | cross-IDB diff | partial (function-level mapping; no block-level diff) | n/a | n/a | n/a | n/a | partial | n/a | n/a | implemented (best in class) |
 | patching/assembly | implemented (patch_bytes, real-IDA tested) | implemented | implemented | implemented | implemented | implemented | n/a | n/a | n/a |

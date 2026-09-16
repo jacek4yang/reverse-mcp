@@ -12,6 +12,7 @@ use crate::deob;
 use crate::plan;
 use crate::signatures;
 use crate::state::WorkerState;
+use crate::transforms;
 use crate::types;
 use crate::valuean;
 use crate::workflow;
@@ -35,6 +36,7 @@ const MUTATING_METHODS: &[&str] = &[
     "hr.lvar_rename",
     "deep.retype",
     "types.apply",
+    "deob.apply",
     "plan.apply",
     "snapshot.restore",
     "analyze_wait",
@@ -901,6 +903,44 @@ fn dispatch(
             }
             let (idx, _md5) = state.index.as_ref().expect("just built").clone();
             deob::deobfuscate(need_backend(state)?, &idx, target, max_passes)
+        }
+        // ---- #46: deobfuscation transforms (propose -> validate -> apply
+        // -> rollback). Apply is a MUTATING_METHODS entry (whole-plan
+        // revision guard, snapshot first, audited rollback).
+        "deob.propose" => {
+            let target = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let kind_s = params
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Worker("missing 'kind'".into()))?;
+            let kind = transforms::TransformKind::parse(kind_s)?;
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            transforms::propose(need_backend(state)?, &idx, target, kind)
+        }
+        "deob.validate" => {
+            let plan = params
+                .get("plan")
+                .cloned()
+                .ok_or_else(|| Error::Worker("missing 'plan'".into()))?;
+            transforms::validate(need_backend(state)?, &plan)
+        }
+        "deob.apply" => {
+            let plan = params
+                .get("plan")
+                .cloned()
+                .ok_or_else(|| Error::Worker("missing 'plan'".into()))?;
+            let expected = params.get("expected_revision").and_then(|v| v.as_u64());
+            transforms::apply(state, &plan, expected)
         }
         // ---- #13: signatures / similarity / cross-IDB mapping ----
         "sig.identify" => {

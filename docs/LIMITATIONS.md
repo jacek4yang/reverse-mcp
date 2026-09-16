@@ -132,9 +132,17 @@ under "Shipped" does not work yet.
   analysis-only: no IDB metadata repairs and no byte patches — all
   transformations are proposals; regression tests assert plain functions
   do not trigger detectors and the DB revision is unchanged by runs.
-  Scope notes: no microcode-level transformation is applied yet (Hex-Rays
-  microcode API passes are future work); unflattening is detection +
-  proposal, not an automatic rewrite.
+- #46 transform framework (real-IDA verified): `ida_deobfuscate
+  task=propose|validate|apply|rollback` adds explicit, two-phase
+  transformations on top of #9: patch-level plans (T1/T2/T3) are built as
+  JSON data, validated against the live DB (outside-function sites,
+  inbound xrefs and unreadable bytes are rejected with evidence), applied
+  after a snapshot with a whole-plan `expected_revision` guard through the
+  audited mutation machinery, and rolled back via the snapshot path
+  (audited, revision-bumping). Scope notes: transforms are patch-level
+  (byte NOPs) bounded to one function with at most 16 sites; T4
+  (unflattening) reports `requires_microcode` and emits no plan; microcode
+  -level rewriting is still future work (#43 provides inspection only).
 - #13 signatures & cross-IDB (real-IDA verified): `ida_sig` builds
   multi-family function fingerprints (imports, strings, constants, call
   shape, size) on the analysis index, persists them as open JSON
