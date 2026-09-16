@@ -10,6 +10,7 @@ use crate::crypto;
 use crate::deep;
 use crate::deob;
 use crate::plan;
+use crate::rules;
 use crate::signatures;
 use crate::state::WorkerState;
 use crate::transforms;
@@ -842,7 +843,57 @@ fn dispatch(
                 state.index = Some((idx, md5));
             }
             let (idx, _md5) = state.index.as_ref().expect("just built").clone();
-            crypto::crypto_scan(need_backend(state)?, &idx, max)
+            // #47: effective rule set (rules/ dir packs, or the built-in
+            // pack). Cache key includes the pack-set hash so changed packs
+            // miss; load errors are fail-closed and surface to the agent.
+            let ruleset = rules::load_effective()?;
+            let set_hash = ruleset.set_hash();
+            let cache_key = (
+                "intel_crypto".to_string(),
+                format!("{max}|{set_hash}"),
+                current_rev,
+            );
+            if let Some(cached) = state.workflow_cache.get(&cache_key) {
+                return Ok(json!({
+                    "cached": true,
+                    "cache_hits": state.workflow_cache.hits,
+                    "result": cached,
+                }));
+            }
+            let out = crypto::crypto_scan(need_backend(state)?, &idx, max, Some(&ruleset))?;
+            state.workflow_cache.put(cache_key, out.clone());
+            Ok(json!({
+                "cached": false,
+                "cache_hits": state.workflow_cache.hits,
+                "result": out,
+            }))
+        }
+        // ---- #47: rule packs —— list loaded packs with provenance ----
+        "intel.packs" => {
+            let ruleset = rules::load_effective()?;
+            let packs: Vec<Value> = ruleset
+                .packs
+                .iter()
+                .map(|p| {
+                    json!({
+                        "name": p.name,
+                        "version": p.version,
+                        "source": p.source,
+                        "sha256": p.sha256,
+                        "enabled": p.enabled,
+                        "rules": {
+                            "constants": p.constants.len(),
+                            "api_hashes": p.api_hashes.len(),
+                            "strings": p.strings.len(),
+                        },
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "packs": packs,
+                "set_hash": ruleset.set_hash(),
+                "note": "packs load from <exe dir>/rules/*.json (fail-closed); built-in pack covers #12 content",
+            }))
         }
         "intel.api_hashes" => {
             let max = params

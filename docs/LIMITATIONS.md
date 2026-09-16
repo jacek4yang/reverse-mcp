@@ -119,12 +119,17 @@ under "Shipped" does not work yet.
   imports (5 algorithms: ror13-add, wide variant, ror15-add, rol7-xor,
   crc32), and recovers stack/array strings from immediate-store analysis.
   All findings carry provenance (EA, containing function, callers) and are
-  ranked by bounded confidence; nothing mutates the IDB. Scope notes:
-  YARA-style external rule packs are not loaded (built-in table only);
+  ranked by bounded confidence; nothing mutates the IDB. #47 adds external
+  rule packs: `<exe_dir>/rules/*.json` extends the built-in constant set
+  with an open, fail-closed JSON format (docs/RULE_PACKS.md) — every hit
+  row records deterministic provenance (pack name + content fingerprint +
+  rule id) and `ida_intel task=packs_list` surfaces the loaded packs; scan
+  bounds and caching are unchanged. Scope notes:
   the algorithm registry is parameter-light (no module-name + API-name
   combination hashing yet); string decode is limited to what ctree
   immediates expose (no full emulator); resolver algorithm inference is
-  corpus-verification-based, not decompiler-derived.
+  corpus-verification-based, not decompiler-derived; api_hash/string rules
+  load and validate but do not yet feed the resolver/strings tasks.
 - #9 deobfuscation (real-IDA verified): `ida_deobfuscate` runs an
   analysis-only pass engine (flattening CFG shape, opaque/redundant
   branches, indirect transfers, junk no-ops, tail-jumps) with per-pass

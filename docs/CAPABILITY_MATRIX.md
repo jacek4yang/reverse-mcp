@@ -26,7 +26,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | vtable/classes | implemented (evidence + vtable scan, real-IDA tested) | partial | partial | partial | n/a | implemented | implemented | n/a | n/a |
 | register/value tracking | partial (ctree/call-site evidence) | n/a | n/a | n/a | n/a | partial | partial | n/a | n/a |
 | data flow | implemented, real-IDA tested ([deep](../crates/rmcp-worker/src/deep.rs)) | n/a | n/a | n/a | n/a | partial | partial | n/a | partial |
-| crypto detection | implemented, real-IDA tested ([crypto](../crates/rmcp-worker/src/crypto.rs)) | n/a | n/a | n/a | n/a | implemented | n/a | implemented | n/a |
+| crypto detection | implemented, real-IDA tested ([crypto](../crates/rmcp-worker/src/crypto.rs)); extensible rule packs with provenance (#47) | n/a | n/a | n/a | n/a | implemented | n/a | implemented | n/a |
 | API hashing | implemented (registry + corpus verification) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
 | string recovery | implemented (stack/array immediates) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
 | deobfuscation/unflattening | partial (analysis-only detection + proposals) | n/a | n/a | n/a | n/a | implemented (analysis + explicit patch transforms w/ validate+rollback; microcode transforms pending) | n/a | n/a | n/a |

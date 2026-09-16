@@ -110,22 +110,103 @@ const CONST_PACKS: &[ConstPack] = &[
     },
 ];
 
-/// One detected crypto-constant hit.
+/// One detected crypto-constant hit (with #47 provenance).
 #[derive(Debug, Clone)]
 struct ConstHit {
     ea: u64,
-    name: &'static str,
+    /// Rule id (provenance-stable, e.g. "builtin.aes_s-box" or pack rule id).
+    name: String,
+    /// Human label (pack rule label or the #12 pack name).
+    label: String,
     table_size: usize,
     confidence: f64,
+    /// #47 provenance: pack name + pack file sha256.
+    pack_name: String,
+    pack_sha: String,
+}
+
+/// #47: export the compiled-in constant packs as a rule-pack JSON value so
+/// the built-in pack is generated from the same source of truth (#12).
+pub fn const_packs_json() -> Value {
+    let rules: Vec<Value> = CONST_PACKS
+        .iter()
+        .map(|p| {
+            json!({
+                "kind": "constant",
+                "id": format!("builtin.{}", p.name.to_lowercase().replace([' ', '(', ')', '/', ','], "_")),
+                "hex": p.bytes.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+                "label": p.name,
+                "table_size": p.table_size,
+                "rarity": p.rarity,
+            })
+        })
+        .collect();
+    json!({
+        "format": 1,
+        "name": "builtin",
+        "version": "1",
+        "source": "compiled-in CONST_PACKS (#12)",
+        "rules": rules,
+    })
+}
+
+/// #47: names of the registered API-hash primitives (for rule validation).
+pub fn algo_names() -> Vec<&'static str> {
+    ALGOS.iter().map(|a| a.name).collect()
 }
 
 /// Scan all readable segments for known crypto constants. Returns ranked
 /// hits with referencing functions and callers from the analysis index.
+///
+/// #47: the scanned rule set is passed in (`rules`); each hit row records
+/// provenance (pack name + sha256 + rule id) so findings stay explainable.
+/// `None` keeps the compiled-in #12 behavior unchanged (backwards compat).
 pub fn crypto_scan(
     backend: &dyn IdaBackend,
     idx: &AnalysisIndex,
     max_hits: usize,
+    rules: Option<&crate::rules::RuleSet>,
 ) -> Result<Value> {
+    // Flatten the effective constant rules with their provenance.
+    // label, pack, sha, rule id, bytes, table size, rarity
+    type PackedRule = (String, String, String, String, Vec<u8>, usize, f64);
+    let mut packed: Vec<PackedRule> = Vec::new();
+    if rules.is_none() {
+        for p in CONST_PACKS {
+            packed.push((
+                p.name.to_string(),
+                "builtin".to_string(),
+                "builtin".to_string(),
+                format!(
+                    "builtin.{}",
+                    p.name
+                        .to_lowercase()
+                        .replace([' ', '(', ')', '/', ','], "_")
+                ),
+                p.bytes.to_vec(),
+                p.table_size,
+                p.rarity,
+            ));
+        }
+    }
+    if let Some(rs) = rules {
+        for pack in &rs.packs {
+            if !pack.enabled {
+                continue;
+            }
+            for r in &pack.constants {
+                packed.push((
+                    r.label.clone(),
+                    pack.name.clone(),
+                    pack.sha256.clone(),
+                    r.id.clone(),
+                    r.bytes.clone(),
+                    r.table_size,
+                    r.rarity,
+                ));
+            }
+        }
+    }
     let segs = backend.segments()?;
     let mut hits: Vec<ConstHit> = Vec::new();
     let mut truncated = false;
@@ -155,15 +236,23 @@ pub fn crypto_scan(
             if bytes.is_empty() {
                 break;
             }
-            for pack in CONST_PACKS {
-                for (i, window) in bytes.windows(pack.bytes.len()).enumerate() {
-                    if window == pack.bytes {
+            // #47: scan against the flattened rule set (provenance rows):
+            // (label, pack name, pack sha, rule id, pattern, size, rarity).
+            for (label, pack_name, pack_sha, rule_id, pat, table_size, rarity) in &packed {
+                if pat.is_empty() || pat.len() > bytes.len() {
+                    continue;
+                }
+                for (i, window) in bytes.windows(pat.len()).enumerate() {
+                    if window == &pat[..] {
                         let ea = base + i as u64;
                         hits.push(ConstHit {
                             ea,
-                            name: pack.name,
-                            table_size: pack.table_size,
-                            confidence: pack.rarity,
+                            name: rule_id.clone(),
+                            label: label.clone(),
+                            table_size: *table_size,
+                            confidence: *rarity,
+                            pack_name: pack_name.clone(),
+                            pack_sha: pack_sha.clone(),
                         });
                         if hits.len() >= max_hits * 4 {
                             truncated = true;
@@ -212,12 +301,16 @@ pub fn crypto_scan(
             }
             json!({
                 "kind": "crypto_constant",
-                "name": h.name,
+                "rule": h.name,
+                "label": h.label,
                 "ea": format!("{:#x}", h.ea),
                 "table_size": h.table_size,
                 "confidence": format!("{:.2}", h.confidence),
                 "containing_function": funcs.iter().map(|f| format!("{f:#x}")).collect::<Vec<_>>(),
                 "callers": callers.keys().map(|c| format!("{c:#x}")).collect::<Vec<_>>(),
+                // #47 deterministic provenance: which pack, which content.
+                "pack": h.pack_name,
+                "pack_sha256": h.pack_sha,
             })
         })
         .collect();
@@ -598,7 +691,7 @@ mod tests {
     fn crypto_scan_well_formed_on_mock() {
         let b = open_mock();
         let idx = b.build_index().unwrap().0;
-        let out = crypto_scan(&b, &idx, 50).unwrap();
+        let out = crypto_scan(&b, &idx, 50, None).unwrap();
         assert!(out["findings"].as_array().is_some(), "out: {out}");
         for f in out["findings"].as_array().unwrap() {
             assert!(f["ea"].as_str().is_some(), "{f}");
