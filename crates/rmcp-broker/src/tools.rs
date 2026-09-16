@@ -652,9 +652,23 @@ pub async fn tool_hr(broker: &Broker, args: Value) -> Result<Value, McpError> {
                 .map_err(err_from)?;
             Ok(json!({"db": db, "outcome": out}))
         }
+        "microcode" => {
+            let out = s
+                .call(
+                    "hr.microcode",
+                    json!({
+                        "ea": ea,
+                        "maturity": arg_u64(&args, "maturity", 0),
+                        "max_insns": arg_u64(&args, "max_insns", 2000).min(20_000),
+                    }),
+                )
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "microcode": bound_output(broker, "ida_hr", out)}))
+        }
         other => Err(mcp_code(
             "invalid_args",
-            &format!("unknown hr action '{other}' (cfunc|lvar_rename)"),
+            &format!("unknown hr action '{other}' (cfunc|microcode|lvar_rename)"),
         )),
     }
 }

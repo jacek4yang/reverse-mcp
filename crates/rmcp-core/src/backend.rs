@@ -209,6 +209,13 @@ pub trait IdaBackend: Send {
         new_name: &str,
     ) -> Result<MutationOutcome>;
 
+    // ---- #43: microcode ----
+
+    /// Bounded microcode dump of the function at `ea` at maturity
+    /// `req_maturity` (an MMAT_* code; 0 = decompiler default). Read-only:
+    /// generates the mba, extracts bounded rows, and frees it.
+    fn hr_microcode(&self, ea: u64, req_maturity: u32, max_insns: usize) -> Result<Value>;
+
     // ---- #16: snapshots / rollback ----
 
     /// Take an IDB snapshot/restore point. Real backend wraps IDA's undo

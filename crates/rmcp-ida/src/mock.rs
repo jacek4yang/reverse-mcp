@@ -142,7 +142,7 @@ impl IdaBackend for MockBackend {
             plugins: true,
             ctree: !self.decompile_off,
             lvars: !self.decompile_off,
-            microcode: false,
+            microcode: !self.decompile_off,
             switches: true,
             fixups: true,
             tails: true,
@@ -642,6 +642,49 @@ impl IdaBackend for MockBackend {
             name.to_string()
         };
         Ok(json!({"name": name, "demangled": demangled, "changed": demangled != name}))
+    }
+
+    // ---- #43: microcode (deterministic fake mba) ----
+
+    fn hr_microcode(&self, ea: u64, req_maturity: u32, max_insns: usize) -> Result<Value> {
+        self.require_open()?;
+        if self.decompile_off {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays not available in this backend".into(),
+            });
+        }
+        let f = self.function_at(ea)?;
+        // Deterministic 3-block mba: entry -> body -> exit, with a jz back
+        // edge so successors/predecessors are non-trivial.
+        let maturity = if req_maturity == 0 {
+            5
+        } else {
+            req_maturity.min(7)
+        };
+        let body_ea = f.ea_start + 4;
+        let blocks = json!([
+            {"serial": 0, "type": 0, "start_ea": f.ea_start, "end_ea": body_ea, "n_pred": 0, "n_succ": 1, "n_insns": 0},
+            {"serial": 1, "type": 0, "start_ea": body_ea, "end_ea": f.ea_end, "n_pred": 2, "n_succ": 2, "n_insns": 3},
+            {"serial": 2, "type": 0, "start_ea": 0, "end_ea": 0, "n_pred": 2, "n_succ": 0, "n_insns": 0},
+        ]);
+        // mov #0x5A, eax / add eax, ebx / jz 1  — opcode 4=mov, 12=add, 44=jz
+        let mut insns = vec![
+            json!({"block": 1, "opcode": 4,  "ea": body_ea,      "l_type": 2, "r_type": 0, "d_type": 1, "d_size": 4, "n_value": 0x5A, "text": "mov #0x5A, eax.4"}),
+            json!({"block": 1, "opcode": 12, "ea": body_ea + 2,  "l_type": 1, "r_type": 1, "d_type": 1, "d_size": 4, "n_value": 0,    "text": "add eax.4, ebx.4"}),
+            json!({"block": 1, "opcode": 44, "ea": body_ea + 4,  "l_type": 1, "r_type": 0, "d_type": 7, "d_size": 0, "n_value": 0,    "text": "jz 1"}),
+        ];
+        let truncated = insns.len() > max_insns;
+        insns.truncate(max_insns);
+        Ok(json!({
+            "ea": f.ea_start,
+            "function": f.name,
+            "maturity": maturity,
+            "qty": 3,
+            "truncated": truncated,
+            "blocks": blocks,
+            "insns": insns,
+        }))
     }
 
     fn snapshot_create(&mut self) -> Result<Value> {

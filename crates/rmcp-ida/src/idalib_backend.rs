@@ -170,7 +170,7 @@ impl IdaBackend for IdaLibBackend {
             plugins: true,
             ctree: decompile,
             lvars: decompile,
-            microcode: false, // not implemented in #19; honest
+            microcode: decompile,
             switches: true,
             fixups: true,
             tails: true,
@@ -943,6 +943,35 @@ impl IdaBackend for IdaLibBackend {
             revision_after,
             detail: json!({"function": func_ea, "name": func_name, "var_defea": var_defea, "new": new_name}),
         })
+    }
+
+    // ---- #43: microcode ----
+
+    fn hr_microcode(&self, ea: u64, req_maturity: u32, max_insns: usize) -> Result<Value> {
+        let idb = self.idb()?;
+        if !idb.decompiler_available() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays decompiler not available".into(),
+            });
+        }
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let fptr = unsafe { idalib::ffi::func::get_func(idalib::ffi::into_ea(ea)) };
+        let dump =
+            idalib::caps::gen_microcode_dump(fptr, autocxx::c_int(0), req_maturity, max_insns)
+                .map_err(|e| Error::Worker(format!("microcode generation failed: {e}")))?;
+        let name = f.name().unwrap_or_default();
+        Ok(json!({
+            "ea": f.start_address(),
+            "function": name,
+            "maturity": dump.maturity,
+            "qty": dump.qty,
+            "truncated": dump.truncated,
+            "blocks": dump.blocks,
+            "insns": dump.insns,
+        }))
     }
 
     // ---- #19: instructions / names ----

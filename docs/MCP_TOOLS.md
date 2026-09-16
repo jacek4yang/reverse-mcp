@@ -1,4 +1,4 @@
-﻿# MCP Tools Reference
+# MCP Tools Reference
 
 Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
@@ -135,7 +135,7 @@ cot_*/cit_* codes, `c` payload: number value / object EA / var index / member
 offset / pointer size, rendered `text`) and `lvars` (`defea`, `name`,
 `type_text`, `width`, `is_arg`, `is_result`); `include_ctree`/`include_lvars`
 gate the lists, `limit` bounds rows, `*_truncated` flags an exceeded limit.
-`action=lvar_rename` renames a lvar by `var_defea` (as reported in `cfunc`
+`action=microcode` (issue #43) generates microcode for the function at `ea` up to `maturity` (0 = decompiler default, 1..7 = MMAT_*) and returns a bounded dump under`result`:`qty` blocks (each with serial, type, start/end EA, MBL_ flags, pred/succ/insn counts) and`insns` (block, mcode opcode, ea, operand kinds as mopt_t codes, destination size, immediate value when present, and SDK-rendered`text`);`max_insns` (default 2000, hard cap 20000) bounds the dump and`truncated` flags a hit. Analysis-only: the mba is generated, walked and freed inside the worker - nothing is written to the IDB. Identical requests on an unchanged revision are served from the revision-keyed cache (`cached`=true); any mutation invalidates it. `action=lvar_rename` renames a lvar by `var_defea` (as reported in `cfunc`
 lvars); it is a mutation: bumps the revision and honours `expected_revision`,
 and the new name is visible in subsequent decompilations.
 
