@@ -1,8 +1,8 @@
-# MCP Tools Reference
+﻿# MCP Tools Reference
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-33 tools. Every list/search/graph result is bounded; oversized responses spill
+33 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -68,11 +68,11 @@ address references). Entries: `from`, `to`, `kind` (call/data/flow/far/jump).
 ### ida_graph
 Graph rooted at the function containing `ea`.
 
-- `kind=calls` (default): function-wide call discovery — walks every instruction
+- `kind=calls` (default): function-wide call discovery 鈥?walks every instruction
   in the function's range, collects call targets (operand direct targets + code
   xrefs), resolves each target to its containing function, and follows into
   callees up to `depth<=5`.
-- `kind=cfg`: IDA flow chart of the function — basic blocks (`bb_<ea>`) with
+- `kind=cfg`: IDA flow chart of the function 鈥?basic blocks (`bb_<ea>`) with
   flow edges (succs + fallthrough).
 
 Both bounded by `max_nodes` (default 200, max 5000) and `max_edges` (default
@@ -84,7 +84,7 @@ edges from `calls` carry the `callsite` address.
 immediate `value`). Bounded by `limit`.
 
 ### ida_bytes
-`action=get` (`size<=4096`) returns hex; `action=patch` applies bytes — see
+`action=get` (`size<=4096`) returns hex; `action=patch` applies bytes 鈥?see
 Limitations.
 
 ### ida_segments
@@ -167,7 +167,7 @@ score is the evidence count, never an opaque number. `action=build` builds
 and persists the index under the reverse-mcp cache dir (never IDA's own
 directories; keyed by input md5 + revision + schema version; corrupt or
 stale cache fails safely and rebuilds). `action=status` reports identity and
-whether the index is current — any mutation bumps the revision and
+whether the index is current 鈥?any mutation bumps the revision and
 invalidates it.
 
 ### ida_analyze
@@ -177,19 +177,19 @@ workflow request as its whole argument and runs `workflow.run` in the worker:
 `{"workflow": "...", "ea": "0x140001000", "detail": "summary", ...}`.
 
 Workflows:
-- `function_context` — one-call function briefing: index facts (imports called,
+- `function_context` 鈥?one-call function briefing: index facts (imports called,
   strings, constants, indirect calls, callers/callees from the index) plus
-  xrefs_to (≤50). `detail=full` adds decompilation; `summary` (default) omits it.
-- `call_neighborhood` — BFS over call edges from a function, CRT/thunk noise
+  xrefs_to (鈮?0). `detail=full` adds decompilation; `summary` (default) omits it.
+- `call_neighborhood` 鈥?BFS over call edges from a function, CRT/thunk noise
   filtered (opt back in with `include_noise=true`); reports `truncated` when the
   `max_functions` budget clips the frontier.
-- `reference_context` — who references this data/address: xrefs, the containing
+- `reference_context` 鈥?who references this data/address: xrefs, the containing
   function, its callers; non-summary detail adds a bounded snippet.
-- `import_usage` — all functions calling a given import, name matched
+- `import_usage` 鈥?all functions calling a given import, name matched
   case-insensitively against the index.
-- `subsystem_context` — BFS from multiple roots at once; non-summary detail
+- `subsystem_context` 鈥?BFS from multiple roots at once; non-summary detail
   adds bounded snippets per function.
-- `trace_call_path` — call path from a function to a target (`target_ea`),
+- `trace_call_path` 鈥?call path from a function to a target (`target_ea`),
   BFS over caller edges; `found: false` when no route exists within `depth`.
 
 Budgets (per request): `depth` (default 2), `max_functions` (default 10,
@@ -205,7 +205,7 @@ as usual.
 Deep analysis (#10): recursive decompilation with type propagation and
 bounded data-flow. Three tasks:
 
-- `deep_function` — post-order recursive walk: callees decompile first, then
+- `deep_function` 鈥?post-order recursive walk: callees decompile first, then
   the caller; the recorded prototype already reflects callee improvements,
   so each function is decompiled exactly once per run. Propagation then runs
   on the collected call graph: a function whose prototype changed marks its
@@ -214,16 +214,16 @@ bounded data-flow. Three tasks:
   (`iteration N: k type changes ... 0 -> converged`), per-function dossiers
   (prototype, direct call sites with EAs, indirect calls) and a
   `skipped` list explaining what the budget left out.
-- `trace_dataflow` — bounded source->sink evidence across callers/callees
+- `trace_dataflow` 鈥?bounded source->sink evidence across callers/callees
   (`direction=forward|backward|both`). Every evidence row cites the concrete
   call-site EA, the function containing it, and a confidence tag:
   `confirmed` for direct calls, `heuristic` for indirect sites.
-- `retype` — apply a C prototype declaration to a function (mutation;
+- `retype` 鈥?apply a C prototype declaration to a function (mutation;
   invalidates the analysis caches and bumps the revision).
 
 Budgets (agent-controlled, hard caps): `depth` (1..8, default 3),
 `max_functions` (1..100, default 20), `max_iterations` (1..20, default 5),
-`max_calls` (1..200, default 24), `timeout_ms` (1000..1800000) — wall-clock
+`max_calls` (1..200, default 24), `timeout_ms` (1000..1800000) 鈥?wall-clock
 budget; on expiry the run stops and reports `budget_hit: true` with partial
 results. Repeats on an unchanged DB revision are served from the
 revision-keyed cache (`cached: true`), so re-running without DB changes
@@ -232,18 +232,18 @@ performs no decompilation at all.
 ### ida_type_recovery
 Type recovery (#11): infer structure shapes from member-access evidence and
 discover vtable candidates. Four tasks:
-- `evidence` — bounded member-access observations of one decompiled
+- `evidence` 鈥?bounded member-access observations of one decompiled
   function: base object, offset, access width, read/write, EA. Covers both
   typed `obj->field` accesses (cot_memptr) and untyped pointer arithmetic
   (`*(T *)((char *)obj + off)`).
-- `propose` — aggregate observations across several functions into field
+- `propose` 鈥?aggregate observations across several functions into field
   proposals with per-field evidence (read/write counts, candidate
   width/type, confidence in [0,1] derived from site counts, independent
   functions, write evidence and width consistency) and a shape match
-  against existing local types. PREVIEW ONLY — nothing is mutated.
-- `vtable` — scan an EA as a vtable: slots resolved to code targets and
+  against existing local types. PREVIEW ONLY 鈥?nothing is mutated.
+- `vtable` 鈥?scan an EA as a vtable: slots resolved to code targets and
   function names; a plausibility verdict (>= 2 code slots).
-- `create_struct` — APPLY a reviewed struct definition (name + fields
+- `create_struct` 鈥?APPLY a reviewed struct definition (name + fields
   `offset:size:name:type_decl`) as an explicit mutation; bumps the revision
   and invalidates caches. Applied types persist in the IDB.
 
@@ -253,20 +253,20 @@ mutation are reported separately.
 ### ida_intel
 Binary intelligence (#12): crypto constants, API-hash resolvers, recovered
 strings. Three read-only tasks:
-- `crypto_scan` — scans all segments for known crypto constants (AES S-box
+- `crypto_scan` 鈥?scans all segments for known crypto constants (AES S-box
   and inverse, SHA-1/SHA-256/MD5 initial states, SHA-256 round constants,
-  CRC-32 reflected table, Blowfish P-array, TEA/XTEA delta — public spec
+  CRC-32 reflected table, Blowfish P-array, TEA/XTEA delta 鈥?public spec
   values, no third-party rule files). Findings are ranked by confidence
   (rarity-weighted) and each carries the containing function and its
   callers from the analysis index, so one request goes from a constant to
   usable context.
-- `resolve_api_hashes` — detects likely hash-resolver functions (constant
+- `resolve_api_hashes` 鈥?detects likely hash-resolver functions (constant
   density + size shape from the #14 index) and verifies candidate
   algorithms (ror13-add, ror13-add-wide, ror15-add, rol7-xor, crc32)
   against a corpus built from the DB's own import names. Verified
   constants list the algorithm + API name; single-hash resolvers are
   flagged low-confidence (0.45) so false positives are visible.
-- `recover_strings` — stack/array string recovery: immediate-store values
+- `recover_strings` 鈥?stack/array string recovery: immediate-store values
   from a function's ctree assemble into printable runs (>= 4 chars) with
   per-run source EAs. The IDB is never patched; decoding is reported, not
   applied.
@@ -278,14 +278,14 @@ DB revision via the workflow cache.
 Deobfuscation analysis (#9): an analysis-only pass engine over one
 function. Passes (each with name/version, confidence, evidence, proposed
 changes, failure reason, deterministic budget):
-- `flatten_detect` — CFG dispatcher-shape detection (avg in-degree,
+- `flatten_detect` 鈥?CFG dispatcher-shape detection (avg in-degree,
   node/edge counts).
-- `opaque_branch` — constant/self comparisons in ctree plus assembly-level
+- `opaque_branch` 鈥?constant/self comparisons in ctree plus assembly-level
   `cmp regX, regX` / `test regX, regX` followed by a conditional jump.
-- `indirect_transfer` — unresolved `jmp reg` / `call reg` sites.
-- `junk_code` — redundant store/load round trips (`mov [mem], reg` /
+- `indirect_transfer` 鈥?unresolved `jmp reg` / `call reg` sites.
+- `junk_code` 鈥?redundant store/load round trips (`mov [mem], reg` /
   `mov reg, [mem]` pairs on one slot), self-moves, `add 0`.
-- `tail_jump` — `jmp reg` where the register was just assigned (tail-call
+- `tail_jump` 鈥?`jmp reg` where the register was just assigned (tail-call
   obfuscation).
 
 SAFETY: analysis-only. No IDB metadata repairs, no byte patches;
@@ -296,16 +296,16 @@ tests assert plain functions do not trigger detectors.
 
 ### ida_sig
 Function signatures & cross-IDB comparison (#13). Multi-family
-fingerprints (imports, strings, constants, call shape, size — never a
+fingerprints (imports, strings, constants, call shape, size 鈥?never a
 single hash) built on the analysis index, persisted as open JSON
 (`.rsig.json`, documented format, no proprietary content):
-- `export` — build + persist the signature index next to the DB.
-- `identify` — rank reference-index candidates for one function with
+- `export` 鈥?build + persist the signature index next to the DB.
+- `identify` 鈥?rank reference-index candidates for one function with
   per-family evidence (`imports`/`constants`/`strings`/`calls`/`size`,
   each 0..1) and an overall score. `strict` matches (overall >= 0.85, no
   family below 0.50) are safe for rename proposals; `relaxed` matches are
   hints only.
-- `map` — cross-IDB function mapping between two exported indexes,
+- `map` 鈥?cross-IDB function mapping between two exported indexes,
   producing TRANSFER PROPOSALS: ranked pairs with per-family evidence and
   conflict detection (a target with a meaningful, non-auto name is flagged
   `conflict: true` and requires explicit approval). Nothing is applied
@@ -320,13 +320,13 @@ map).
 Frequently-read state is exposed as MCP resources so agents can pull context
 without tool calls; content passes the same output budget as tools:
 
-- `ida://db/{id}/metadata` — extended metadata (md5/sha256, image base,
+- `ida://db/{id}/metadata` 鈥?extended metadata (md5/sha256, image base,
   entry points)
-- `ida://db/{id}/segments` — all segments
-- `ida://db/{id}/entrypoints` — entry points (ordinal/ea/name)
-- `ida://db/{id}/imports` — imported modules and entries (paginated)
-- `ida://db/{id}/exports` — export view (entry points)
-- `ida://db/{id}/info` — basic DB info (function count, processor, bits)
+- `ida://db/{id}/segments` 鈥?all segments
+- `ida://db/{id}/entrypoints` 鈥?entry points (ordinal/ea/name)
+- `ida://db/{id}/imports` 鈥?imported modules and entries (paginated)
+- `ida://db/{id}/exports` 鈥?export view (entry points)
+- `ida://db/{id}/info` 鈥?basic DB info (function count, processor, bits)
 
 `{id}` is the db handle returned by `ida_db action=open`. Unknown handles
 yield a stable `unknown_db` error.
@@ -336,14 +336,14 @@ yield a stable `unknown_db` error.
 Optional prompts that encode the recommended workflow; clients list them via
 `prompts/list` and render with `prompts/get`:
 
-- `ida_survey_binary` — metadata/segments/entrypoints/imports survey, then a
+- `ida_survey_binary` 鈥?metadata/segments/entrypoints/imports survey, then a
   structure report
-- `ida_analyze_function_deep` — inspect → decompile → lvars → xrefs →
+- `ida_analyze_function_deep` 鈥?inspect 鈫?decompile 鈫?lvars 鈫?xrefs 鈫?
   constants, evidence-table summary
-- `ida_trace_data_flow` — bidirectional xref walk with per-hop decompilation
-- `ida_safe_refactor` — plan → preview → snapshot → apply with
-  expected_revision → audit
-- `ida_compare_binaries` — two-db diff of counts, segments, strings, hashes
+- `ida_trace_data_flow` 鈥?bidirectional xref walk with per-hop decompilation
+- `ida_safe_refactor` 鈥?plan 鈫?preview 鈫?snapshot 鈫?apply with
+  expected_revision 鈫?audit
+- `ida_compare_binaries` 鈥?two-db diff of counts, segments, strings, hashes
 
 ## Optimistic concurrency
 
@@ -353,6 +353,6 @@ action=lvar_rename`, `ida_mutation action=apply`) accepts `expected_revision`.
 If present and stale, the
 mutation is
 rejected with `revision_conflict` before touching the DB; the revision only
-increments after a confirmed successful mutation. Omitted → no check.
+increments after a confirmed successful mutation. Omitted 鈫?no check.
 `ida_mutation action=apply` guards the WHOLE plan: a stale revision rejects
 the batch before the first operation runs.
