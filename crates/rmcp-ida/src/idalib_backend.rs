@@ -1138,6 +1138,75 @@ impl IdaBackend for IdaLibBackend {
         })
     }
 
+    fn type_member_evidence(&self, ea: u64, limit: usize) -> Result<Value> {
+        let idb = self.idb()?;
+        if !idb.decompiler_available() {
+            return Err(Error::CapabilityUnavailable {
+                capability: "decompile".into(),
+                reason: "hexrays decompiler not available".into(),
+            });
+        }
+        let f = idb
+            .function_at(ea)
+            .ok_or_else(|| Error::Worker(format!("no function containing {ea:#x}")))?;
+        let cf = idb.decompile(&f).map_err(err)?;
+        let (rows, truncated) = idalib::caps::member_rows(cf.inner_ptr(), limit);
+        let members: Vec<Value> = rows
+            .iter()
+            .map(|m| {
+                json!({
+                    "base_text": m.base_text,
+                    "is_global": m.is_global,
+                    "base_ea": format!("{:#x}", m.base_ea),
+                    "offset": format!("{:#x}", m.offset),
+                    "access_size": m.access_size,
+                    "is_write": m.is_write,
+                    "at_ea": format!("{:#x}", m.at_ea),
+                })
+            })
+            .collect();
+        Ok(json!({
+            "ea": f.start_address(),
+            "members": members,
+            "truncated": truncated,
+        }))
+    }
+
+    fn type_vtable_scan(&self, ea: u64, max_entries: usize) -> Result<Value> {
+        let idb = self.idb()?;
+        let _ = idb;
+        let slots = idalib::caps::vtable_slots(ea, max_entries);
+        Ok(json!({
+            "ea": format!("{ea:#x}"),
+            "slots": slots,
+            "truncated": false,
+        }))
+    }
+
+    fn type_udt_create(&mut self, name: &str, fields: &[String]) -> Result<MutationOutcome> {
+        let Some(_ord) = idalib::caps::udt_create(name, fields) else {
+            return Err(Error::Worker(format!(
+                "udt create failed for '{name}': bad member declaration or TIL write rejected"
+            )));
+        };
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"name": name, "ordinal": _ord, "fields": fields}),
+        })
+    }
+
+    fn type_udt_match(&self, shape: &[(u64, u64)]) -> Result<Value> {
+        let name = idalib::caps::udt_match_shape(shape);
+        Ok(json!({
+            "shape": shape.iter().map(|(o, s)| json!({
+                "offset": format!("{o:#x}"), "size": s,
+            })).collect::<Vec<_>>(),
+            "match": name,
+        }))
+    }
+
     fn build_index(&self) -> Result<(rmcp_core::analysis_index::AnalysisIndex, String)> {
         use rmcp_core::analysis_index::{AnalysisIndex, FunctionFacts, IndexedString};
         let md5 = self.input_md5()?;

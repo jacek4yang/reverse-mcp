@@ -806,6 +806,93 @@ impl IdaBackend for MockBackend {
             detail: json!({"ea": ea, "decl": decl}),
         })
     }
+
+    fn type_member_evidence(&self, ea: u64, limit: usize) -> Result<Value> {
+        self.require_open()?;
+        if !self.names.contains_key(&ea) {
+            return Err(Error::Worker(format!("no function at {ea:#x}")));
+        }
+        // Deterministic observations shaped like the fixture struct:
+        // field at +0 (4 bytes), +8 (8), +0x10 (4); one write at +8.
+        let obs = [
+            (0x0u64, 4u32, false),
+            (0x8, 8, false),
+            (0x8, 8, true),
+            (0x10, 4, false),
+        ];
+        let members: Vec<Value> = obs
+            .iter()
+            .take(limit)
+            .map(|(off, size, wr)| {
+                json!({
+                    "base_text": "obj",
+                    "is_global": true,
+                    "base_ea": format!("{ea:#x}"),
+                    "offset": format!("{off:#x}"),
+                    "access_size": size,
+                    "is_write": wr,
+                    "at_ea": format!("{ea:#x}"),
+                })
+            })
+            .collect();
+        Ok(json!({
+            "ea": format!("{ea:#x}"),
+            "members": members,
+            "truncated": obs.len() > limit,
+        }))
+    }
+
+    fn type_vtable_scan(&self, ea: u64, max_entries: usize) -> Result<Value> {
+        self.require_open()?;
+        // Deterministic fake vtable: slots point at known functions.
+        let targets = [0x401100u64, 0x401200, 0x401300];
+        let slots: Vec<Value> = targets
+            .iter()
+            .take(max_entries)
+            .enumerate()
+            .map(|(i, &t)| {
+                json!({
+                    "slot": i,
+                    "target_ea": format!("{t:#x}"),
+                    "is_code": true,
+                    "name": self.names.get(&t).cloned().unwrap_or_default(),
+                })
+            })
+            .collect();
+        Ok(
+            json!({"ea": format!("{ea:#x}"), "slots": slots, "truncated": targets.len() > max_entries}),
+        )
+    }
+
+    fn type_udt_create(&mut self, name: &str, fields: &[String]) -> Result<MutationOutcome> {
+        self.require_open()?;
+        if name.trim().is_empty() || fields.is_empty() {
+            return Err(Error::Worker("udt create needs a name and fields".into()));
+        }
+        let revision_after = self.bump();
+        Ok(MutationOutcome {
+            changed: true,
+            revision_after,
+            detail: json!({"name": name, "fields": fields}),
+        })
+    }
+
+    fn type_udt_match(&self, shape: &[(u64, u64)]) -> Result<Value> {
+        self.require_open()?;
+        // The mock "knows" one struct shape: 0x0:4, 0x8:8, 0x10:4.
+        let known = [(0x0u64, 4u64), (0x8, 8), (0x10, 4)];
+        let hit = shape.len() == known.len()
+            && shape
+                .iter()
+                .zip(known.iter())
+                .all(|((o1, s1), (o2, s2))| o1 == o2 && s1 == s2);
+        Ok(json!({
+            "shape": shape.iter().map(|(o, s)| json!({
+                "offset": format!("{o:#x}"), "size": s,
+            })).collect::<Vec<_>>(),
+            "match": if hit { json!("mock_shape_t") } else { json!(null) },
+        }))
+    }
 }
 
 impl MockBackend {

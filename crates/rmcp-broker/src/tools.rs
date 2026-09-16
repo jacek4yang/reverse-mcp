@@ -811,6 +811,28 @@ pub async fn tool_deep(broker: &Broker, args: Value) -> Result<Value, McpError> 
     Ok(json!({"db": db, "deep": out}))
 }
 
+/// ida_type_recovery - #11 type recovery: member-access evidence, aggregated
+/// field proposals (preview only), vtable scans, and explicit struct application.
+pub async fn tool_type_recovery(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let task = arg_str(&args, "task").unwrap_or("propose").to_string();
+    let method = match task.as_str() {
+        "evidence" => "types.evidence",
+        "propose" => "types.propose",
+        "vtable" => "types.vtable",
+        "create_struct" => "types.apply",
+        other => {
+            return Err(McpError::invalid_params(
+                format!("unknown task '{other}' (evidence|propose|vtable|create_struct)"),
+                None,
+            ));
+        }
+    };
+    let out = s.call(method, args).await.map_err(err_from)?;
+    Ok(json!({"db": db, "types": out}))
+}
+
 /// ida_evidence - #14 structured evidence search over the analysis index.
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries

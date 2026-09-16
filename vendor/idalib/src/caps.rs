@@ -426,3 +426,93 @@ pub fn apply_prototype(cfunc: *mut hexrays::cfunc_t, decl: &str) -> bool {
 pub fn prototype_text(cfunc: *mut hexrays::cfunc_t) -> String {
     unsafe { ffi::ffix::idalib_prototype_text(cfunc) }.to_string()
 }
+
+// ---- type recovery (#11): member evidence, vtables, UDT create/match ----
+
+/// One member-access observation from a decompiled function.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MemberRow {
+    pub base_text: String,
+    pub is_global: bool,
+    pub base_ea: u64,
+    pub offset: u64,
+    pub access_size: u32,
+    pub is_write: bool,
+    pub at_ea: u64,
+}
+
+/// Bounded member-access rows of a decompiled function.
+pub fn member_rows(cfunc: *mut hexrays::cfunc_t, limit: usize) -> (Vec<MemberRow>, bool) {
+    unsafe {
+        let raw = ffi::ffix::idalib_members_walk(cfunc, limit);
+        if raw.is_null() {
+            return (Vec::new(), false);
+        }
+        let n = ffi::ffix::idalib_member_rows_size(raw);
+        let truncated = ffi::ffix::idalib_member_rows_truncated(raw);
+        let mut rows = Vec::with_capacity(n);
+        for i in 0..n {
+            rows.push(MemberRow {
+                base_text: ffi::ffix::idalib_member_row_base(raw, i).to_string(),
+                is_global: ffi::ffix::idalib_member_row_global(raw, i),
+                base_ea: ffi::ffix::idalib_member_row_base_ea(raw, i),
+                offset: ffi::ffix::idalib_member_row_offset(raw, i),
+                access_size: ffi::ffix::idalib_member_row_size(raw, i),
+                is_write: ffi::ffix::idalib_member_row_write(raw, i),
+                at_ea: ffi::ffix::idalib_member_row_at(raw, i),
+            });
+        }
+        ffi::ffix::idalib_member_rows_free(raw);
+        (rows, truncated)
+    }
+}
+
+/// One vtable slot.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VtableSlot {
+    pub slot: u64,
+    pub target_ea: u64,
+    pub is_code: bool,
+    pub name: String,
+}
+
+/// Scan `max_entries` vtable slots starting at `ea` (read-only).
+pub fn vtable_slots(ea: u64, max_entries: usize) -> Vec<VtableSlot> {
+    unsafe {
+        (0..max_entries as u64)
+            .filter_map(|slot| {
+                let r = ffi::ffix::idalib_vtable_scan_row(ea, slot);
+                let r = r.as_ref()?;
+                Some(VtableSlot {
+                    slot: ffi::ffix::idalib_vtable_row_slot(r),
+                    target_ea: ffi::ffix::idalib_vtable_row_target(r),
+                    is_code: ffi::ffix::idalib_vtable_row_is_code(r),
+                    name: ffi::ffix::idalib_vtable_row_name(r).to_string(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// Create (or replace) a named struct in the local TIL. `fields` items are
+/// "offset:size:name:type_decl" quadruples. Returns the new ordinal or None.
+/// Mutation: caller bumps the revision.
+pub fn udt_create(name: &str, fields: &[String]) -> Option<u32> {
+    let cname = std::ffi::CString::new(name).ok()?;
+    let items = std::ffi::CString::new(fields.join(", ")).ok()?;
+    let ord = unsafe { ffi::ffix::idalib_udt_create(cname.as_ptr(), items.as_ptr()) };
+    if ord == 0 { None } else { Some(ord) }
+}
+
+/// Find a local type whose (offset, size) field shape matches. Returns the
+/// type name or None.
+pub fn udt_match_shape(shape: &[(u64, u64)]) -> Option<String> {
+    let spec = shape
+        .iter()
+        .map(|(o, s)| format!("{o}:{s}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let cspec = std::ffi::CString::new(spec).ok()?;
+    let name = unsafe { ffi::ffix::idalib_udt_match_shape(cspec.as_ptr()) }.to_string();
+    if name.is_empty() { None } else { Some(name) }
+}
