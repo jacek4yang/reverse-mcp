@@ -14,6 +14,7 @@ pub mod deep;
 pub mod deob;
 pub mod dispatch;
 pub mod plan;
+pub mod signatures;
 pub mod state;
 pub mod types;
 pub mod workflow;
