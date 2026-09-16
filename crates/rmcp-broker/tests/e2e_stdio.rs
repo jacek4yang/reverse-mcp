@@ -53,7 +53,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 33, "expected 33 tools, got {names:?}");
+    assert_eq!(names.len(), 34, "expected 34 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -175,6 +175,44 @@ async fn e2e_stdio_mock_wired() {
     assert!(
         text.contains("\"truncated\": true"),
         "max_insns=2 must truncate the 3-insn fake mba: {text}"
+    );
+
+    // #44: value propagation through ida_value (mock -> bounded rows, cached)
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_value").with_arguments(
+                json!({"db": handle, "ea": "0x401200", "depth": 2, "max_calls": 8})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("ida_value");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"targets\"") && text.contains("\"indirect\""),
+        "value response: {text}"
+    );
+    assert!(
+        text.contains("\"cached\": false"),
+        "first value call must be a cache miss: {text}"
+    );
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_value").with_arguments(
+                json!({"db": handle, "ea": "0x401200", "depth": 2, "max_calls": 8})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("ida_value cached");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"cached\": true"),
+        "identical repeat on unchanged revision must hit the cache: {text}"
     );
 
     // edit (rename) then verify revision

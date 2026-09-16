@@ -10,7 +10,7 @@ MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.
 
 ## What it does
 
-An agent connects over MCP and gets **33 tools** (full reference with schemas
+An agent connects over MCP and gets **34 tools** (full reference with schemas
 in [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md)). Highlights:
 
 | tool | purpose |

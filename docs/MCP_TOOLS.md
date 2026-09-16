@@ -2,7 +2,7 @@
 
 Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
-33 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
+34 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -138,6 +138,21 @@ gate the lists, `limit` bounds rows, `*_truncated` flags an exceeded limit.
 `action=microcode` (issue #43) generates microcode for the function at `ea` up to `maturity` (0 = decompiler default, 1..7 = MMAT_*) and returns a bounded dump under`result`:`qty` blocks (each with serial, type, start/end EA, MBL_ flags, pred/succ/insn counts) and`insns` (block, mcode opcode, ea, operand kinds as mopt_t codes, destination size, immediate value when present, and SDK-rendered`text`);`max_insns` (default 2000, hard cap 20000) bounds the dump and`truncated` flags a hit. Analysis-only: the mba is generated, walked and freed inside the worker - nothing is written to the IDB. Identical requests on an unchanged revision are served from the revision-keyed cache (`cached`=true); any mutation invalidates it. `action=lvar_rename` renames a lvar by `var_defea` (as reported in `cfunc`
 lvars); it is a mutation: bumps the revision and honours `expected_revision`,
 and the new name is visible in subsequent decompilations.
+
+### ida_value
+Bounded constant/value propagation + indirect-call target resolution
+proposals (issue #44, analysis-only). Walks the function at `ea` plus up to
+`depth` (default 1 = intra-procedural only, cap 8) levels of direct callees,
+reusing the deep single-decompile cache so no function is decompiled twice.
+Merges constant-argument evidence per `(function, argN)` into `targets` rows
+(`values` ascending hex, `at` call-site EAs, `confidence` = `confirmed` when
+one value dominates, `set` for <=4 candidates, `heuristic` beyond, `unknown`
+when none); probes unresolved indirect call sites into `indirect` rows with
+the rendered callee plus `proposals` from up to 8 vtable slots of the base
+object (code targets only, `set` confidence). `max_functions` (default 20),
+`max_calls` (default 24) and `timeout_ms` bound the work; `truncated` flags
+a hit. Cached per revision like `ida_hr action=microcode` (`cached=true` on
+identical repeats; mutations invalidate).
 
 ### ida_insn
 Instruction-level metadata: `action=features` returns the canon `CF_*`
