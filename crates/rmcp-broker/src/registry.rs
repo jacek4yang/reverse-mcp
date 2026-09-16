@@ -1,4 +1,4 @@
-//! Tool registry: 15 agent-facing tools with JSON schemas and dispatch.
+//! Tool registry: 33 agent-facing tools with JSON schemas and dispatch.
 //! Single source of truth for list_tools and call_tool.
 
 use std::sync::Arc;
@@ -184,6 +184,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["features", "demangle"]}, "ea": {"type": "string"}, "name": {"type": "string"}}, "required": ["action"]}),
         },
     ]
+}
+
+/// Public read-only view of the registry for docs-sync tests and tooling.
+pub fn tool_names() -> Vec<&'static str> {
+    defs().into_iter().map(|d| d.name).collect()
 }
 
 pub fn tool_list() -> Vec<Tool> {

@@ -22,7 +22,7 @@ use rmcp_core::result_store::ResultStore;
 
 pub mod prompts;
 pub mod recovery;
-mod registry;
+pub mod registry;
 pub mod resources;
 pub mod tools;
 pub mod worker_pool;

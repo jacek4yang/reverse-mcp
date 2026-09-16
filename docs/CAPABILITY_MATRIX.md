@@ -42,6 +42,8 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | crash recovery | implemented (bounded restart, real-IDA tested) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | token/output controls | implemented (budgets, spill, ranking everywhere) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | cross-platform/multi-version | partial (Windows real-IDA tested; version discovery) | multi-platform | Windows | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform |
+| worker probe hardening | implemented (re-entrancy guard + IDA-dir-aware probe, PR #26) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| reproducible benchmark | implemented (`reverse-mcp bench`, mock mode; real-IDA mode tracked in #50) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
 ## Where reverse-mcp takes a different approach
 - One-call composite workflows (#8) instead of many atomic calls: the agent
@@ -52,8 +54,4 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 - Strict/relaxed signature policy with conflict detection before any rename.
 
 ## Explicit follow-ups (competitor advantages not yet matched)
-1. Microcode-level transforms (hrtng implements real passes; #9 scope note).
-2. Block-level binary diff (BinDiff is best in class; #13 scope note).
-3. YARA-style external rule packs for crypto detection (findcrypt-yara).
-4. Full decompiler-plugin ecosystem (HexRaysPyTools struct inference UX).
-5. Non-Windows real-IDA verification (currently Windows-tested).
+Tracked as GitHub issues: 1→#43, 2→#45, 3→#47, 5→#48.

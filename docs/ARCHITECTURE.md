@@ -15,7 +15,7 @@ One distributed binary: `reverse-mcp.exe`. Subcommands:
 
 | subcommand | purpose |
 |---|---|
-| `serve` | MCP server over stdio (Streamable HTTP is a roadmap item, not implemented) |
+| `serve` | MCP server over stdio; `serve --http 127.0.0.1:8750` enables Streamable HTTP on loopback (multi-agent stress-tested) |
 | `worker` | internal: one process = one loaded IDB = one IDA-owning thread. Also `worker --probe-backend <kind>` for capability detection |
 | `doctor` | config, portable layout, worker probe, IDA discovery report |
 | `ida list` | every discovered IDA install: version, source, decompilers, backend readiness |
@@ -88,10 +88,22 @@ No SDK library is linked and nothing proprietary is emitted.
   caps concurrent DB processes.
 - The broker probes worker capability by running `<exe> worker --probe-backend
   <kind>` and checks the exit code — never stdout matching (IDA prints banner
-  noise).
+  noise). Probes are guarded against re-entrancy (`REVERSE_MCP_PROBING=1`
+  short-circuits `ensure_worker_exe` inside the probe child, so a hung binary
+  can never fork-bomb via recursive probing) and run with the IDA dir on PATH
+  when known, because an idalib-feature exe imports `ida.dll` at load time and
+  dies with STATUS_DLL_NOT_FOUND before `main` otherwise.
 - When running inside a test binary, `current_exe` is the test itself, so
   `ensure_worker_exe` falls back to a `reverse-mcp(.exe)` sibling in the exe or
   parent directory.
+- Worker calls are bounded: `WorkerSession::call_with_timeout` honors an
+  agent-supplied `timeout_ms` clamped to 5s..30min (default per tool). A worker
+  that dies before the protocol handshake produces a stable
+  `capability_unavailable` diagnostic (`diagnose_dead_worker` checks the IDA
+  dir for the runtime DLLs first); unexpected worker death afterwards is
+  handled by the recovery state machine in `crates/rmcp-broker/src/recovery.rs`
+  (Healthy → Crashed → Recovering → Healthy/Dead with bounded respawn and
+  backoff).
 
 ## stdio survival (Windows-specific)
 
@@ -130,7 +142,7 @@ flagged.
 | mock backend unit tests | `crates/rmcp-ida` | no |
 | core (discovery, protocol, store, handles) | `crates/rmcp-core` | no |
 | worker dispatch incl. revision guard | `crates/rmcp-worker` | no |
-| MCP stdio e2e (17 tools) | `crates/rmcp-broker/tests/e2e_stdio.rs` | no |
+| MCP e2e over stdio + HTTP (33 tools) | `crates/rmcp-broker/tests/e2e_stdio.rs` | no |
 | CLI exit-code tests | `tests/cli.rs` | no |
 | real IDA full chain + two concurrent DBs | `tests/idalib_real.rs` (`--ignored`) | yes, local |
 
