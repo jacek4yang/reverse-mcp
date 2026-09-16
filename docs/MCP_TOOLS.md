@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-32 tools. Every list/search/graph result is bounded; oversized responses spill
+33 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -293,6 +293,27 @@ transformations are proposals the agent can apply later through explicit
 mutation tools. `max_passes` (1..16, default 8) bounds the run; a failed
 pass reports its failure reason and leaves the database usable. Regression
 tests assert plain functions do not trigger detectors.
+
+### ida_sig
+Function signatures & cross-IDB comparison (#13). Multi-family
+fingerprints (imports, strings, constants, call shape, size — never a
+single hash) built on the analysis index, persisted as open JSON
+(`.rsig.json`, documented format, no proprietary content):
+- `export` — build + persist the signature index next to the DB.
+- `identify` — rank reference-index candidates for one function with
+  per-family evidence (`imports`/`constants`/`strings`/`calls`/`size`,
+  each 0..1) and an overall score. `strict` matches (overall >= 0.85, no
+  family below 0.50) are safe for rename proposals; `relaxed` matches are
+  hints only.
+- `map` — cross-IDB function mapping between two exported indexes,
+  producing TRANSFER PROPOSALS: ranked pairs with per-family evidence and
+  conflict detection (a target with a meaningful, non-auto name is flagged
+  `conflict: true` and requires explicit approval). Nothing is applied
+  automatically; application goes through rename mutations with
+  `expected_revision`.
+
+Works across multiple simultaneously-open workers (both DBs export, then
+map).
 
 ## Resources (read-only context)
 

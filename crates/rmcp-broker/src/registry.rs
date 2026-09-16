@@ -139,6 +139,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "target": {"type": "string", "description": "function EA"}, "max_passes": {"type": "integer", "maximum": 16}}, "required": ["target"]}),
         },
         ToolDef {
+            name: "ida_sig",
+            description: "Function signatures & cross-IDB comparison (#13). task=export: build a multi-family fingerprint index (imports, strings, constants, call shape, size - open JSON format '.rsig.json') and persist it next to the DB; returns the path. task=identify: rank reference-index candidates for one function with per-family evidence (score 0..1 explained per family); strict matches are safe for rename proposals, relaxed are hints only. task=map: cross-IDB function mapping between two exported sig indexes producing TRANSFER PROPOSALS with conflict detection (target meaningful names require explicit approval) - nothing is applied automatically.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["export", "identify", "map"]}, "target": {"type": "string", "description": "function EA (identify)"}, "reference": {"type": "object", "description": "reference sig index JSON (identify)"}, "from": {"type": "object", "description": "from sig index (map)"}, "to": {"type": "object", "description": "to sig index (map)"}, "max_candidates": {"type": "integer"}, "max_transfers": {"type": "integer"}}, "required": ["task"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -214,6 +219,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_type_recovery" => tools::tool_type_recovery(broker, args).await,
         "ida_intel" => tools::tool_intel(broker, args).await,
         "ida_deobfuscate" => tools::tool_deobfuscate(broker, args).await,
+        "ida_sig" => tools::tool_sig(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

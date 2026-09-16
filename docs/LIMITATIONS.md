@@ -26,7 +26,7 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 32 tools.
+- MCP stdio transport, 33 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -123,6 +123,17 @@ under "Shipped" does not work yet.
   Scope notes: no microcode-level transformation is applied yet (Hex-Rays
   microcode API passes are future work); unflattening is detection +
   proposal, not an automatic rewrite.
+- #13 signatures & cross-IDB (real-IDA verified): `ida_sig` builds
+  multi-family function fingerprints (imports, strings, constants, call
+  shape, size) on the analysis index, persists them as open JSON
+  (`.rsig.json`), ranks identify/map candidates with per-family evidence,
+  and produces cross-IDB transfer PROPOSALS with conflict detection
+  (meaningful target names are never silently overwritten). Two compiled
+  variants of one source map with ranked, explained matches; strict
+  matches (overall >= 0.85, family floor 0.50) gate rename proposals while
+  relaxed matches stay hints. Scope notes: families are index-derived
+  (no microcode-level signatures yet); call shape uses counts, not
+  neighbor identity; no binary-diff block-level mapping.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 

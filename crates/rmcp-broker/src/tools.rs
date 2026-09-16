@@ -872,6 +872,31 @@ pub async fn tool_deobfuscate(broker: &Broker, args: Value) -> Result<Value, Mcp
     Ok(json!({"db": db, "deob": out}))
 }
 
+/// ida_sig - #13 signatures/similarity/cross-IDB mapping. identify/map
+/// reference sig indexes passed as JSON; export persists an open-format
+/// index next to the DB.
+pub async fn tool_sig(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let task = arg_str(&args, "task").unwrap_or("export").to_string();
+    let method = match task.as_str() {
+        "export" => "sig.export",
+        "identify" => "sig.identify",
+        "map" => "sig.map",
+        other => {
+            return Err(McpError::invalid_params(
+                format!("unknown task '{other}' (export|identify|map)"),
+                None,
+            ));
+        }
+    };
+    let out = s
+        .call_with_timeout(method, args, std::time::Duration::from_secs(300))
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "sig": out}))
+}
+
 /// ida_evidence - #14 structured evidence search over the analysis index.
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries

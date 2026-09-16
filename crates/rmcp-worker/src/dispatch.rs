@@ -10,6 +10,7 @@ use crate::crypto;
 use crate::deep;
 use crate::deob;
 use crate::plan;
+use crate::signatures;
 use crate::state::WorkerState;
 use crate::types;
 use crate::workflow;
@@ -826,8 +827,127 @@ fn dispatch(
             let (idx, _md5) = state.index.as_ref().expect("just built").clone();
             deob::deobfuscate(need_backend(state)?, &idx, target, max_passes)
         }
+        // ---- #13: signatures / similarity / cross-IDB mapping ----
+        "sig.identify" => {
+            let target = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            // The reference index is loaded from a sig file passed as a
+            // handle (see ida_result spill) or inline JSON from a prior
+            // export_sig call.
+            let reference: signatures::SigIndex = serde_json::from_value(
+                params
+                    .get("reference")
+                    .cloned()
+                    .ok_or_else(|| Error::Worker("missing reference sig index".into()))?,
+            )
+            .map_err(|e| Error::Worker(format!("bad reference sig index: {e}")))?;
+            let max = params
+                .get("max_candidates")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10)
+                .clamp(1, 100) as usize;
+            signatures::identify_function(&idx, &reference, target, &Default::default(), max)
+        }
+        "sig.export" => {
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            let sig = signatures::build_sig_index(need_backend(state)?, &idx)?;
+            let path = signatures::save_sig_index(need_backend(state)?, &sig)?;
+            Ok(json!({
+                "path": path.to_string_lossy(),
+                "functions": sig.functions.len(),
+                "binary_md5": sig.binary_md5,
+                "format": sig.format,
+            }))
+        }
+        "sig.map" => {
+            // Cross-IDB map: both indices come from the caller as JSON
+            // (produced by sig.export round-trip or inline index export).
+            let from: signatures::SigIndex = serde_json::from_value(
+                params
+                    .get("from")
+                    .cloned()
+                    .ok_or_else(|| Error::Worker("missing 'from' sig index".into()))?,
+            )
+            .map_err(|e| Error::Worker(format!("bad 'from' sig index: {e}")))?;
+            let to: signatures::SigIndex = serde_json::from_value(
+                params
+                    .get("to")
+                    .cloned()
+                    .ok_or_else(|| Error::Worker("missing 'to' sig index".into()))?,
+            )
+            .map_err(|e| Error::Worker(format!("bad 'to' sig index: {e}")))?;
+            let max = params
+                .get("max_transfers")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(100)
+                .clamp(1, 2000) as usize;
+            sig_map_from_sigs(from, to, max)
+        }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }
+}
+
+/// Cross-IDB mapping over two sig indexes. The `from`/`to` indexes carry
+/// only open-format facts (no proprietary content).
+fn sig_map_from_sigs(
+    from: signatures::SigIndex,
+    to: signatures::SigIndex,
+    max: usize,
+) -> std::result::Result<Value, Error> {
+    // Reconstruct minimal analysis-index-shaped views so map_functions can
+    // work purely over sig data.
+    let mk_idx = |sig: &signatures::SigIndex| -> rmcp_core::analysis_index::AnalysisIndex {
+        let mut idx = rmcp_core::analysis_index::AnalysisIndex {
+            schema_version: 1,
+            binary_md5: sig.binary_md5.clone(),
+            revision: 0,
+            functions: Default::default(),
+            strings: Vec::new(),
+        };
+        for f in &sig.functions {
+            idx.functions.insert(
+                f.ea,
+                rmcp_core::analysis_index::FunctionFacts {
+                    ea_start: f.ea,
+                    ea_end: f.ea + f.size,
+                    name: f.name.clone(),
+                    size: f.size,
+                    imports: f.imports.to_vec(),
+                    strings: f.strings.to_vec(),
+                    constants: f.constants.to_vec(),
+                    callees: Vec::new(),
+                    callers: Vec::new(),
+                    indirect_calls: 0,
+                    globals: Vec::new(),
+                    demangled: String::new(),
+                },
+            );
+        }
+        idx
+    };
+    let from_idx = mk_idx(&from);
+    let to_idx = mk_idx(&to);
+    signatures::map_functions(&from_idx, &to_idx, &Default::default(), max)
 }
 
 #[cfg(test)]
