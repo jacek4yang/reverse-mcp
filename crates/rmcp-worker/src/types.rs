@@ -244,7 +244,6 @@ fn parse_hex(s: &str) -> u64 {
     u64::from_str_radix(s.trim().trim_start_matches("0x"), 16).unwrap_or(0)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
