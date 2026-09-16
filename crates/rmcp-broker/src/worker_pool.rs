@@ -179,6 +179,12 @@ impl WorkerPool {
     /// binary, `current_exe` is the test itself, so fall back to a
     /// `reverse-mcp(.exe)` sibling in the same or parent directory.
     pub fn ensure_worker_exe(&mut self) -> Result<PathBuf> {
+        // Re-entrancy guard: a probe child (REVERSE_MCP_PROBING=1) must
+        // never resolve/spawn further workers, or a hung binary could
+        // fork-bomb via recursive probing.
+        if std::env::var("REVERSE_MCP_PROBING").as_deref() == Ok("1") {
+            return Err(Error::Worker("re-entrant worker probe".into()));
+        }
         if let Some(p) = &self.worker_exe {
             return Ok(p.clone());
         }
@@ -197,16 +203,13 @@ impl WorkerPool {
             candidates.push(parent.join(sibling));
         }
         for c in candidates {
-            // Never probe this process itself: a probe of the current exe
-            // re-enters ensure_worker_exe in the child, and a stale/hung
-            // child binary would fork-bomb the machine (each probe spawning
-            // another probe). The current exe is the broker, not a worker.
-            if std::env::current_exe().is_ok_and(|cur| cur == c) {
-                continue;
-            }
-            // A valid worker exe answers the mock probe with exit 0.
+            // A valid worker exe answers the mock probe with exit 0. The
+            // probe child sets REVERSE_MCP_PROBING=1 so ensure_worker_exe
+            // inside it short-circuits: a probe must never spawn another
+            // probe (a hung child binary would otherwise fork-bomb).
             let probed = std::process::Command::new(&c)
                 .args(["worker", "--probe-backend", "mock"])
+                .env("REVERSE_MCP_PROBING", "1")
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .output();
