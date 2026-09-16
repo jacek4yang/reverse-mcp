@@ -86,7 +86,7 @@ pub fn deobfuscate(
         used += 1;
     }
 
-    // Re-decompile after "analysis" 鈥?the engine is read-only, so the after
+    // Re-decompile after "analysis" - the engine is read-only, so the after
     // decompilation is identical; it is included so the report shape stays
     // stable when mutation-backed passes are added later (auditability).
     let after = backend.decompile(target).ok();
@@ -431,7 +431,7 @@ fn junk_pass(backend: &dyn IdaBackend, target: u64) -> PassReport {
 }
 
 /// Return-as-jump / tail transfer: block ending in `jmp reg` where reg was
-/// just loaded 鈥?a tail-call obfuscation.
+/// just loaded - a tail-call obfuscation.
 fn tail_jump_pass(backend: &dyn IdaBackend, target: u64) -> PassReport {
     let Some(f) = idx_lookup(backend, target) else {
         return PassReport {

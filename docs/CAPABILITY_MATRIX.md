@@ -31,7 +31,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | string recovery | implemented (stack/array immediates) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
 | deobfuscation/unflattening | partial (analysis-only detection + proposals) | n/a | n/a | n/a | n/a | implemented (analysis + explicit patch transforms w/ validate+rollback; microcode transforms pending) | n/a | n/a | n/a |
 | signatures/similarity | implemented, real-IDA tested ([signatures](../crates/rmcp-worker/src/signatures.rs)) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | implemented (best in class) |
-| cross-IDB diff | partial (function-level mapping; no block-level diff) | n/a | n/a | n/a | n/a | partial | n/a | n/a | implemented (best in class) |
+| cross-IDB diff | function-level mapping + block-level diff with equal/modified/added/removed classification and evidence-fallback pairing (#45); no visual diff | n/a | n/a | n/a | n/a | implemented (block-level) | n/a | n/a | implemented (best in class) |
 | patching/assembly | implemented (patch_bytes, real-IDA tested) | implemented | implemented | implemented | implemented | implemented | n/a | n/a | n/a |
 | define/undefine | partial (func create/delete/resize) | implemented | implemented | implemented | implemented | implemented | n/a | n/a | n/a |
 | snapshots/rollback | implemented (file-level snapshots, real-IDA tested) | n/a | n/a | n/a | n/a | partial | n/a | n/a | n/a |

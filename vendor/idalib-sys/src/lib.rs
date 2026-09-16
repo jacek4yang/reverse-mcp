@@ -165,7 +165,7 @@ include_cpp! {
     generate!("FC_NOPREDS")
     generate!("FC_OUTLINES")
 
-    // hexrays 锟?init/term are hand-written shims in hexrays_extras.h; the
+    // hexrays - init/term are hand-written shims in hexrays_extras.h; the
     // SDK inline functions expand to the `callui` data import of ida.dll,
     // which is incompatible with delay-loading.
     generate!("cfuncptr_t")

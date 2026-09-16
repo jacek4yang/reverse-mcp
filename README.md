@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/jacek4yang/reverse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jacek4yang/reverse-mcp/actions/workflows/ci.yml)
 
-MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** �?a single `reverse-mcp.exe` (broker + self-spawned workers in the same binary) driving IDA through its native idalib API (no `idat`, no Python).
+MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** - a single `reverse-mcp.exe` (broker + self-spawned workers in the same binary) driving IDA through its native idalib API (no `idat`, no Python).
 
 - Architecture details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Tool reference: [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md)
@@ -32,7 +32,7 @@ in [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md)). Highlights:
 | `ida_batch` | up to 20 read-only ops per round trip |
 | `ida_result` | read spilled large results (`r17` handles) |
 | `ida_segments` | segment listing |
-| `ida_mutation` | plan �?review �?apply refactors with snapshots, audit and rollback |
+| `ida_mutation` | plan - review - apply refactors with snapshots, audit and rollback |
 | `ida_evidence` | semantic reverse index: search functions by imports/strings/constants/name |
 | `ida_analyze` | composite workflows (function context, cross-referenced views, token-efficient summaries) |
 | `ida_deep` | recursive decompilation with type propagation and bounded data-flow; resumable, cached |
@@ -46,14 +46,14 @@ Large outputs spill to a result store; truncation is always flagged, never silen
 
 ## Guarantees
 
-- **Optimistic concurrency** �?every mutation (`ida_edit`, `ida_bytes
+- **Optimistic concurrency** - every mutation (`ida_edit`, `ida_bytes
   action=patch`, `ida_types action=set`) accepts `expected_revision`. A stale
   value is rejected with `revision_conflict` before anything is touched; the
   revision increments only after a confirmed successful mutation.
-- **Honest capabilities** �?unimplemented operations fail with
+- **Honest capabilities** - unimplemented operations fail with
   `capability_unavailable` instead of faking success. See
   [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what is not implemented.
-- **Bounded output** �?every list/search/graph has hard caps; oversized
+- **Bounded output** - every list/search/graph has hard caps; oversized
   responses spill to handles read via `ida_result`.
 
 ## Architecture
@@ -64,9 +64,9 @@ agent ←→ broker (reverse-mcp.exe serve, MCP stdio or `serve --http 127.0.0.1
                     └→ idalib (IDA 9.2 native FFI, one IDB per process)
 ```
 
-- **One worker per DB** �?IDA's idalib is single-threaded per database; the broker serializes requests and enforces `max_workers`.
-- **Portable layout** �?everything lives next to the exe (`plugins\`, `cache\`, `logs\`, `reverse-mcp.toml`). Plugins come only from the exe-relative `plugins\` dir (via `IDAUSR`); the IDA install dir and `%APPDATA%\.idapro` are never touched.
-- **Multi-version aware** �?`reverse-mcp ida list` shows every discovered install with a backend status. v0.1 ships a verified backend for 9.2 only; other versions are discovered and reported as `backend unavailable`, never silently driven.
+- **One worker per DB** - IDA's idalib is single-threaded per database; the broker serializes requests and enforces `max_workers`.
+- **Portable layout** - everything lives next to the exe (`plugins\`, `cache\`, `logs\`, `reverse-mcp.toml`). Plugins come only from the exe-relative `plugins\` dir (via `IDAUSR`); the IDA install dir and `%APPDATA%\.idapro` are never touched.
+- **Multi-version aware** -`reverse-mcp ida list` shows every discovered install with a backend status. v0.1 ships a verified backend for 9.2 only; other versions are discovered and reported as `backend unavailable`, never silently driven.
 
 ## Discovery order
 
@@ -86,7 +86,7 @@ Backends are pinned per IDA SDK revision in a checked-in registry
 (`crates/rmcp-core/src/backend_registry.rs`): the exact SDK version/commit,
 FFI source revision, binding-generator versions, and verified architectures.
 Discovery marks an install `backend ready` only when a verified manifest
-exists for its version �?other versions are never silently driven.
+exists for its version - other versions are never silently driven.
 
 Layout correctness is enforced by an **ABI probe** (`backends/abi/`): the
 C++ contract file is compiled against the exact vendored SDK headers and
@@ -100,7 +100,7 @@ pinned `zig c++` driver works).
 Build tools (clang via `zig`, `ninja`) are pinned with
 [DotSlash](https://dotslash-cli.com) pinfiles under `toolchain/dotslash/`;
 Rust is pinned by `rust-toolchain.toml`. Only redistributable build tools
-are pinned there �?never IDA/Hex-Rays material. See
+are pinned there - never IDA/Hex-Rays material. See
 [`toolchain/README.md`](toolchain/README.md).
 
 `reverse-mcp doctor` reports all of the above: toolchain pins, backend
@@ -108,7 +108,7 @@ manifests, ABI-probe status, and discovered installs.
 
 ## Prerequisites
 
-- Windows x86_64 (Linux/macOS untested �?see platform matrix in `doctor`/docs)
+- Windows x86_64 (Linux/macOS untested - see platform matrix in `doctor`/docs)
 - **IDA Pro 9.2** with a valid license (launched at least once)
 - Rust stable (building only; version pinned via `rust-toolchain.toml`)
 
@@ -179,7 +179,7 @@ cargo run --release -p reverse-mcp -- bench
 
 Note: the `--features idalib` build statically imports `ida.dll`/`idalib.dll`,
 so the exe requires the IDA install directory on `PATH` at startup. Mock-only
-builds (feature off, the default) have no IDA imports and run anywhere �?this
+builds (feature off, the default) have no IDA imports and run anywhere - this
 is what CI exercises.
 
 ## Contributing

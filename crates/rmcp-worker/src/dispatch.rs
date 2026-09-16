@@ -6,6 +6,7 @@ use rmcp_core::error::Error;
 use rmcp_core::protocol::{WorkerRequest, WorkerResponse};
 use serde_json::{Value, json};
 
+use crate::blockdiff;
 use crate::crypto;
 use crate::deep;
 use crate::deob;
@@ -68,6 +69,17 @@ fn ea_param(params: &Value, key: &str) -> rmcp_core::error::Result<u64> {
 }
 
 /// Parse a single EA string ("0x.."-hex or decimal).
+/// EA param that accepts a hex/dec string or a JSON number.
+fn ea_param_value(v: &Value) -> rmcp_core::error::Result<u64> {
+    match v {
+        Value::String(s) => parse_ea_param(s),
+        Value::Number(n) => n
+            .as_u64()
+            .ok_or_else(|| Error::Worker("bad ea number".into())),
+        _ => Err(Error::Worker("bad ea value".into())),
+    }
+}
+
 fn parse_ea_param(s: &str) -> rmcp_core::error::Result<u64> {
     let s = s.trim();
     if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
@@ -1069,8 +1081,128 @@ fn dispatch(
                 .clamp(1, 2000) as usize;
             sig_map_from_sigs(from, to, max)
         }
+        // ---- #45: block-level diff over fingerprint data exported from
+        // two DBs (read-only; the broker orchestrates the two sessions --
+        // idalib binds one DB per process, so the worker never opens a
+        // second IDA database).
+        "sig.fingerprints" => {
+            // Bounded per-function block fingerprints for one function (ea)
+            // or for the largest max_functions functions (binary export).
+            let max_blocks = params
+                .get("max_blocks")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(256)
+                .clamp(8, 4096) as usize;
+            match params.get("ea") {
+                Some(v) => {
+                    let ea = ea_param_value(v)?;
+                    let (fps, truncated) = blockdiff::function_block_fingerprints(
+                        need_backend(state)?,
+                        ea,
+                        max_blocks,
+                    )?;
+                    Ok(json!({
+                        "ea": format!("{ea:#x}"),
+                        "blocks": fps.iter().map(block_fp_json).collect::<Vec<_>>(),
+                        "truncated": truncated,
+                    }))
+                }
+                None => {
+                    let current_rev = need_backend(state)?.revision();
+                    let stale = state
+                        .index
+                        .as_ref()
+                        .map(|(idx, _)| idx.revision != current_rev)
+                        .unwrap_or(true);
+                    if stale {
+                        let (idx, md5) = need_backend(state)?.build_index()?;
+                        state.index = Some((idx, md5));
+                    }
+                    let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+                    let max_functions = params
+                        .get("max_functions")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(64)
+                        .clamp(1, 1024) as usize;
+                    // Largest-first so user code beats CRT stubs; thunks
+                    // (j_*) carry no meaningful blocks and are skipped.
+                    let candidates: Vec<(&u64, &rmcp_core::analysis_index::FunctionFacts)> = idx
+                        .functions
+                        .iter()
+                        .filter(|(_, f)| !f.name.starts_with("j_") && f.size >= 16)
+                        .collect();
+                    let mut sorted: Vec<&(&u64, &rmcp_core::analysis_index::FunctionFacts)> =
+                        candidates.iter().collect();
+                    sorted.sort_by_key(|(_, f)| std::cmp::Reverse(f.size));
+                    let mut functions: Vec<Value> = Vec::new();
+                    let mut truncated = sorted.len() > max_functions;
+                    for (ea, f) in sorted.into_iter().take(max_functions) {
+                        let (fps, t) = blockdiff::function_block_fingerprints(
+                            need_backend(state)?,
+                            **ea,
+                            max_blocks,
+                        )?;
+                        truncated |= t;
+                        // #13 family evidence so the diff stage can pair
+                        // unnamed builds (no PDB) by similarity, not name.
+                        let sig = signatures::to_sig_public(**ea, f);
+                        functions.push(json!({
+                            "name": f.name,
+                            "ea": format!("{ea:#x}"),
+                            "blocks": fps.iter().map(block_fp_json).collect::<Vec<_>>(),
+                            "evidence": {
+                                "size": sig.size,
+                                "constants": sig.constants,
+                                "strings": sig.strings,
+                                "imports": sig.imports,
+                                "callee_count": sig.callee_count,
+                                "caller_count": sig.caller_count,
+                            },
+                        }));
+                    }
+                    Ok(json!({
+                        "functions": functions,
+                        "truncated": truncated,
+                        "binary_md5": idx.binary_md5,
+                    }))
+                }
+            }
+        }
+        "sig.diff" => {
+            // Pure-data diff: both fingerprint sets arrive as JSON (each
+            // exported from its own session). No second backend is touched.
+            let threshold = params
+                .get("threshold")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.8)
+                .clamp(0.5, 1.0);
+            let max_blocks = params
+                .get("max_blocks")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(256)
+                .clamp(8, 4096) as usize;
+            blockdiff::diff_from_json(
+                params.get("a").cloned().unwrap_or(Value::Null),
+                params.get("b").cloned().unwrap_or(Value::Null),
+                threshold,
+                max_blocks,
+            )
+        }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }
+}
+
+/// Fingerprint row as JSON (open data shape for cross-session diffing).
+fn block_fp_json(fp: &blockdiff::BlockFp) -> Value {
+    json!({
+        "ea": format!("{:#x}", fp.ea),
+        "mnemonic_hash": format!("{:016x}", fp.mnemonic_hash),
+        "const_hash": format!("{:016x}", fp.const_hash),
+        "const_count": fp.const_count,
+        "out_edges": fp.out_edges,
+        "in_edges": fp.in_edges,
+        "insn_count": fp.insn_count,
+    })
 }
 
 /// Cross-IDB mapping over two sig indexes. The `from`/`to` indexes carry

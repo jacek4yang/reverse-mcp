@@ -1,5 +1,5 @@
 //! Real-IDA integration test (feature `idalib`): drives the REAL production
-//! path 闁?`reverse-mcp serve`'s WorkerPool spawning `<exe> worker` children 闁?
+//! path -`reverse-mcp serve`'s WorkerPool spawning `<exe> worker` children -
 //! against a real binary analyzed by IDA 9.2 idalib.
 //!
 //! Chain verified (docs/reverse-mcp-ffi.md item 7):
@@ -528,14 +528,14 @@ async fn real_ida_issue19_func_mutations() {
 
     // Pick a code address that is not inside any function (scan for undefined
     // code past the last function). Use main's tail bytes region: we create a
-    // function at a known code address by first deleting nothing 闁?instead we
+    // function at a known code address by first deleting nothing - instead we
     // grab the address of an instruction INSIDE main (offset +2) which belongs
     // to no function start, and create a function there? add_func on a
     // mid-function address fails; so use a fresh path: find undefined bytes.
     // Simplest deterministic approach: create at main's entry + main size
     // boundary is risky. Instead, locate any "sub_" region via the analyzer:
     // use an address right after main's end where padding/thunk code may sit.
-    // Robust choice: pick the entry thunk of an import (data) 闁?no. We use
+    // Robust choice: pick the entry thunk of an import (data) - no. We use
     // `functions` list: choose the LAST function's end; alignment padding
     // follows. If creation fails there, the API must return a clean error.
     let fns = s
@@ -827,7 +827,7 @@ async fn real_ida_issue14_evidence_index() {
     let built = s.call("index.build", json!({})).await.expect("index.build");
     assert!(built["functions"].as_u64().unwrap() > 0, "build: {built}");
 
-    // Query 1: strings predicate 闁?the fixture has "usage: simple".
+    // Query 1: strings predicate - the fixture has "usage: simple".
     let hits = s
         .call(
             "index.query",
@@ -857,7 +857,7 @@ async fn real_ida_issue14_evidence_index() {
         .expect("name query");
     assert!(hits2["count"].as_u64().unwrap() >= 1, "hits2: {hits2}");
 
-    // Query 3: import predicate 闁?simple.exe imports from the CRT; search a
+    // Query 3: import predicate - simple.exe imports from the CRT; search a
     // common import substring. Even zero hits must be a bounded response.
     let hits3 = s
         .call(
@@ -1388,7 +1388,7 @@ async fn real_ida_issue12_binary_intel() {
     // at runtime and compares; those constants appear in api_dispatch.
     // Detection requires constants in the index: verify at least one
     // resolver-shaped finding if the compiler kept the constants inline.
-    // (If MSVC folded them, the scan legitimately reports nothing 閳?assert
+    // (If MSVC folded them, the scan legitimately reports nothing - assert
     // the response is well-formed in that case.)
     for f in hfindings {
         assert!(
@@ -2092,4 +2092,133 @@ async fn real_ida_issue47_rule_packs_parity_and_provenance() {
     s.call("db.close", json!({})).await.expect("db.close");
     drop(s);
     pool.close(&handle).await.expect("close");
+}
+
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue45_block_diff() {
+    // Fixtures: sig_v1.exe vs sig_v1b.exe - same crypto.c source, same
+    // /Od /Zi flags. Acceptance: fingerprints are stable across an
+    // unchanged rebuild. sig_v1 has PDB names; sig_v1b (rebuilt without a
+    // symbol server path) resolves sub_* names, so this also exercises the
+    // evidence-similarity pairing fallback for stripped builds.
+    let src_a = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sig_v1.exe");
+    let src_b = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sig_v1b.exe");
+    let dst_a = std::env::temp_dir().join("reverse-mcp-it-45a.exe");
+    let dst_b = std::env::temp_dir().join("reverse-mcp-it-45b.exe");
+    std::fs::copy(&src_a, &dst_a).expect("copy v1");
+    std::fs::copy(&src_b, &dst_b).expect("copy v1b");
+    for d in [&dst_a, &dst_b] {
+        let _ = std::fs::remove_file(std::path::PathBuf::from(format!("{}.i64", d.display())));
+    }
+    let dst_a = dst_a.to_string_lossy().into_owned();
+    let dst_b = dst_b.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    // Two sessions (idalib binds one DB per worker process); each exports
+    // its own fingerprints, the worker diffs the exported JSON.
+    let h_a = open_idalib(&mut pool, &dst_a).await;
+    let h_b = open_idalib(&mut pool, &dst_b).await;
+    let sess_a = pool.session(&h_a).await.expect("session a");
+    let sess_b = pool.session(&h_b).await.expect("session b");
+    let s_a = sess_a.lock().await;
+    let s_b = sess_b.lock().await;
+    s_a.call("analyze_wait", json!({}))
+        .await
+        .expect("analyze a");
+    s_b.call("analyze_wait", json!({}))
+        .await
+        .expect("analyze b");
+
+    // 1. Binary fingerprints both sides.
+    let fa = s_a
+        .call(
+            "sig.fingerprints",
+            json!({"max_functions": 32, "max_blocks": 128}),
+        )
+        .await
+        .expect("fingerprints a");
+    let fb = s_b
+        .call(
+            "sig.fingerprints",
+            json!({"max_functions": 32, "max_blocks": 128}),
+        )
+        .await
+        .expect("fingerprints b");
+    assert!(
+        fa["functions"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false),
+        "side A must fingerprint functions: {fa}"
+    );
+
+    // 2. Diff: same source + same flags -> no function may be fully
+    //    unmatched; evidence fallback must pair the renamed rebuild.
+    let d = s_a
+        .call("sig.diff", json!({"a": fa, "b": fb, "threshold": 0.8}))
+        .await
+        .expect("sig.diff");
+    let matched = d["matched_functions"].as_u64().expect("matched");
+    assert!(matched >= 5, "paired functions must exist: {d}");
+    let eq = d["equal"].as_u64().expect("equal");
+    assert!(
+        eq * 2 >= matched,
+        "unchanged rebuild should be mostly equal: {d}"
+    );
+    for c in d["changed"].as_array().expect("changed") {
+        assert!(c["rows"].is_array(), "changed rows present: {c}");
+    }
+
+    // 3. Single-function diff: rows well-formed.
+    let fns = s_a
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let target = fns
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| {
+            f["name"]
+                .as_str()
+                .map(|n| n.contains("api_dispatch") || n.contains("sbox_sample"))
+                .unwrap_or(false)
+        })
+        .and_then(|f| f["ea_start"].as_u64())
+        .expect("a named fixture function");
+    let fp_a = s_a
+        .call(
+            "sig.fingerprints",
+            json!({"ea": format!("{target:#x}"), "max_blocks": 128}),
+        )
+        .await
+        .expect("fp a");
+    let fp_b = s_b
+        .call(
+            "sig.fingerprints",
+            json!({"ea": format!("{target:#x}"), "max_blocks": 128}),
+        )
+        .await
+        .expect("fp b");
+    let fd = s_a
+        .call("sig.diff", json!({"a": fp_a, "b": fp_b, "threshold": 0.8}))
+        .await
+        .expect("function diff");
+    for r in fd["rows"].as_array().expect("rows") {
+        assert!(
+            matches!(
+                r["kind"].as_str().unwrap_or(""),
+                "equal" | "modified" | "added" | "removed"
+            ),
+            "row classification: {r}"
+        );
+    }
+
+    s_a.call("db.close", json!({})).await.expect("close a");
+    s_b.call("db.close", json!({})).await.expect("close b");
+    drop(s_a);
+    drop(s_b);
+    pool.close(&h_a).await.expect("close pool a");
+    pool.close(&h_b).await.expect("close pool b");
 }

@@ -156,9 +156,17 @@ under "Shipped" does not work yet.
   (meaningful target names are never silently overwritten). Two compiled
   variants of one source map with ranked, explained matches; strict
   matches (overall >= 0.85, family floor 0.50) gate rename proposals while
-  relaxed matches stay hints. Scope notes: families are index-derived
+  relaxed matches stay hints. #45 adds block-level diff: bounded CFG
+  fingerprints (normalized mnemonic-sequence hash + constant set + edge
+  shape), block classification equal/modified/added/removed, two-session
+  orchestration (each session fingerprints its own DB; the diff itself is
+  pure data — idalib binds one DB per process), and name pairing with a
+  family-evidence similarity fallback so stripped rebuilds pair by
+  evidence. Scope notes: families are index-derived
   (no microcode-level signatures yet); call shape uses counts, not
-  neighbor identity; no binary-diff block-level mapping.
+  neighbor identity; block fingerprints are x86/x64-normalized (scores are
+  not portable across architectures); pairing is per-function, never a
+  whole-binary O(N²) block cross-match.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 
