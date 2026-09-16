@@ -124,6 +124,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["deep_function", "trace_dataflow", "retype"]}, "target": {"type": "string", "description": "function ea or name (deep_function/trace_dataflow)"}, "ea": {"type": "string", "description": "function ea (retype)"}, "decl": {"type": "string", "description": "C prototype declaration (retype)"}, "direction": {"type": "string", "enum": ["forward", "backward", "both"]}, "depth": {"type": "integer"}, "max_functions": {"type": "integer"}, "max_iterations": {"type": "integer"}, "max_calls": {"type": "integer"}}, "required": ["task"]}),
         },
         ToolDef {
+            name: "ida_type_recovery",
+            description: "Type recovery (#11): infer struct shapes from member-access evidence and discover vtable candidates. task=evidence: member-access observations (offset, width, read/write, EA) of one decompiled function. task=propose: aggregate observations across several functions into field proposals with per-field evidence (read/write counts, candidate width/type, confidence 0..1) and a shape match against existing local types; PREVIEW ONLY. task=vtable: scan an EA as a vtable and map slots to candidate methods. task=create_struct: APPLY a reviewed struct definition (name + fields 'offset:size:name:type_decl') as an explicit mutation. Proposals never apply silently; low-confidence proposals are marked as such.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["evidence", "propose", "vtable", "create_struct"]}, "ea": {"type": "string"}, "functions": {"type": "array", "items": {"type": "string"}, "description": "function EAs to aggregate (propose)"}, "name": {"type": "string", "description": "struct name (create_struct)"}, "fields": {"type": "array", "items": {"type": "string"}, "description": "'offset:size:name:type_decl' quadruples (create_struct)"}, "limit": {"type": "integer"}, "max_entries": {"type": "integer"}}, "required": ["task"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -196,6 +201,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_evidence" => tools::tool_evidence(broker, args).await,
         "ida_analyze" => tools::tool_analyze(broker, args).await,
         "ida_deep" => tools::tool_deep(broker, args).await,
+        "ida_type_recovery" => tools::tool_type_recovery(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

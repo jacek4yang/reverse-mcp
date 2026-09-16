@@ -727,6 +727,8 @@ pub mod ffix {
         type LvarRowList;
         type CallRowList;
         type ProtoRow;
+        type MemberRowList;
+        type VtableRow;
 
         unsafe fn idalib_ctree_walk(f: *mut cfunc_t, limit: usize) -> *mut CtreeRowList;
         unsafe fn idalib_ctree_rows_free(rows: *mut CtreeRowList);
@@ -777,6 +779,28 @@ pub mod ffix {
         unsafe fn idalib_call_row_arg_count(rows: *const CallRowList, i: usize) -> usize;
         unsafe fn idalib_apply_prototype(f: *mut cfunc_t, decl: *const c_char) -> bool;
         unsafe fn idalib_prototype_text(f: *mut cfunc_t) -> String;
+
+        // ---- type recovery (#11) ----
+        unsafe fn idalib_members_walk(f: *mut cfunc_t, limit: usize) -> *mut MemberRowList;
+        unsafe fn idalib_member_rows_free(rows: *mut MemberRowList);
+        unsafe fn idalib_member_rows_size(rows: *const MemberRowList) -> usize;
+        unsafe fn idalib_member_rows_truncated(rows: *const MemberRowList) -> bool;
+        unsafe fn idalib_member_row_base(rows: *const MemberRowList, i: usize) -> String;
+        unsafe fn idalib_member_row_global(rows: *const MemberRowList, i: usize) -> bool;
+        unsafe fn idalib_member_row_base_ea(rows: *const MemberRowList, i: usize) -> u64;
+        unsafe fn idalib_member_row_offset(rows: *const MemberRowList, i: usize) -> u64;
+        unsafe fn idalib_member_row_size(rows: *const MemberRowList, i: usize) -> u32;
+        unsafe fn idalib_member_row_write(rows: *const MemberRowList, i: usize) -> bool;
+        unsafe fn idalib_member_row_at(rows: *const MemberRowList, i: usize) -> u64;
+
+        unsafe fn idalib_vtable_scan_row(ea: u64, slot: u64) -> UniquePtr<VtableRow>;
+        unsafe fn idalib_vtable_row_slot(r: &VtableRow) -> u64;
+        unsafe fn idalib_vtable_row_target(r: &VtableRow) -> u64;
+        unsafe fn idalib_vtable_row_is_code(r: &VtableRow) -> bool;
+        unsafe fn idalib_vtable_row_name(r: &VtableRow) -> String;
+
+        unsafe fn idalib_udt_create(name: *const c_char, decl_items: *const c_char) -> u32;
+        unsafe fn idalib_udt_match_shape(shape: *const c_char) -> String;
 
         type plugin_t = super::ffi::plugin_t;
 

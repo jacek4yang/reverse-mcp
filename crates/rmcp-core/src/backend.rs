@@ -250,6 +250,22 @@ pub trait IdaBackend: Send {
     /// Apply a C prototype declaration to the function at `ea`
     /// (mutation; bumps revision on success).
     fn deep_apply_prototype(&mut self, ea: u64, decl: &str) -> Result<MutationOutcome>;
+
+    // ---- #11: type recovery ----
+
+    /// Bounded member-access observations (offset, width, read/write) of
+    /// the decompiled function at `ea`.
+    fn type_member_evidence(&self, ea: u64, limit: usize) -> Result<Value>;
+
+    /// Read-only scan of `max_entries` vtable slots starting at `ea`.
+    fn type_vtable_scan(&self, ea: u64, max_entries: usize) -> Result<Value>;
+
+    /// Create (or replace) a named struct type in the local TIL.
+    /// `fields` items are "offset:size:name:type_decl". Mutation.
+    fn type_udt_create(&mut self, name: &str, fields: &[String]) -> Result<MutationOutcome>;
+
+    /// Match a (offset, size) field shape against existing local types.
+    fn type_udt_match(&self, shape: &[(u64, u64)]) -> Result<Value>;
 }
 
 /// Boxed alias used across the workspace.

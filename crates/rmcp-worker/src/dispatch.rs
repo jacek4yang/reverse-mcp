@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use crate::deep;
 use crate::plan;
 use crate::state::WorkerState;
+use crate::types;
 use crate::workflow;
 
 fn need_backend(state: &mut WorkerState) -> rmcp_core::error::Result<&mut (dyn IdaBackend + '_)> {
@@ -29,6 +30,7 @@ const MUTATING_METHODS: &[&str] = &[
     "func.resize",
     "hr.lvar_rename",
     "deep.retype",
+    "types.apply",
     "plan.apply",
     "snapshot.restore",
     "analyze_wait",
@@ -50,20 +52,22 @@ pub fn handle(state: &mut WorkerState, req: WorkerRequest) -> WorkerResponse {
 
 fn ea_param(params: &Value, key: &str) -> rmcp_core::error::Result<u64> {
     match params.get(key) {
-        Some(Value::String(s)) => {
-            let s = s.trim();
-            if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-                u64::from_str_radix(hex, 16)
-                    .map_err(|e| Error::Worker(format!("bad ea '{s}': {e}")))
-            } else {
-                s.parse::<u64>()
-                    .map_err(|e| Error::Worker(format!("bad ea '{s}': {e}")))
-            }
-        }
+        Some(Value::String(s)) => parse_ea_param(s),
         Some(v) => v
             .as_u64()
             .ok_or_else(|| Error::Worker(format!("bad ea value for '{key}'"))),
         None => Err(Error::Worker(format!("missing '{key}'"))),
+    }
+}
+
+/// Parse a single EA string ("0x.."-hex or decimal).
+fn parse_ea_param(s: &str) -> rmcp_core::error::Result<u64> {
+    let s = s.trim();
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u64::from_str_radix(hex, 16).map_err(|e| Error::Worker(format!("bad ea '{s}': {e}")))
+    } else {
+        s.parse::<u64>()
+            .map_err(|e| Error::Worker(format!("bad ea '{s}': {e}")))
     }
 }
 
@@ -666,6 +670,79 @@ fn dispatch(
                 "cache_hits": state.workflow_cache.hits,
                 "result": result,
             }))
+        }
+        // ---- #11: type recovery ----
+        "types.evidence" => {
+            let ea = ea_param(&params, "ea")?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(64)
+                .clamp(1, 512) as usize;
+            need_backend(state)?.type_member_evidence(ea, limit)
+        }
+        "types.vtable" => {
+            let ea = ea_param(&params, "ea")?;
+            let max = params
+                .get("max_entries")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(32)
+                .clamp(1, 256) as usize;
+            need_backend(state)?.type_vtable_scan(ea, max)
+        }
+        "types.propose" => {
+            // Aggregate member evidence across the given functions into
+            // field proposals (preview only — no mutation).
+            let eas = params
+                .get("functions")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| Error::Worker("missing functions array".into()))?;
+            let mut function_eas = Vec::new();
+            for v in eas {
+                match v {
+                    Value::String(s) => function_eas.push(parse_ea_param(s)?),
+                    Value::Number(n) => function_eas.push(
+                        n.as_u64()
+                            .ok_or_else(|| Error::Worker("bad function ea".into()))?,
+                    ),
+                    _ => return Err(Error::Worker("bad function ea".into())),
+                }
+            }
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(64)
+                .clamp(1, 512) as usize;
+            types::recover_structure(need_backend(state)?, &idx, &function_eas, limit)
+        }
+        "types.apply" => {
+            // Explicit mutation: apply a reviewed struct proposal.
+            let name = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Worker("missing name".into()))?;
+            let fields = params
+                .get("fields")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| Error::Worker("missing fields array".into()))?
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>();
+            check_revision(&params, need_backend(state)?)?;
+            let out = types::apply_struct(need_backend(state)?, name, &fields)?;
+            state.workflow_cache.invalidate_all();
+            Ok(out)
         }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }

@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-29 tools. Every list/search/graph result is bounded; oversized responses spill
+30 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -228,6 +228,27 @@ budget; on expiry the run stops and reports `budget_hit: true` with partial
 results. Repeats on an unchanged DB revision are served from the
 revision-keyed cache (`cached: true`), so re-running without DB changes
 performs no decompilation at all.
+
+### ida_type_recovery
+Type recovery (#11): infer structure shapes from member-access evidence and
+discover vtable candidates. Four tasks:
+- `evidence` — bounded member-access observations of one decompiled
+  function: base object, offset, access width, read/write, EA. Covers both
+  typed `obj->field` accesses (cot_memptr) and untyped pointer arithmetic
+  (`*(T *)((char *)obj + off)`).
+- `propose` — aggregate observations across several functions into field
+  proposals with per-field evidence (read/write counts, candidate
+  width/type, confidence in [0,1] derived from site counts, independent
+  functions, write evidence and width consistency) and a shape match
+  against existing local types. PREVIEW ONLY — nothing is mutated.
+- `vtable` — scan an EA as a vtable: slots resolved to code targets and
+  function names; a plausibility verdict (>= 2 code slots).
+- `create_struct` — APPLY a reviewed struct definition (name + fields
+  `offset:size:name:type_decl`) as an explicit mutation; bumps the revision
+  and invalidates caches. Applied types persist in the IDB.
+
+Proposals never apply silently; observed facts, inference and the applied
+mutation are reported separately.
 
 ## Resources (read-only context)
 

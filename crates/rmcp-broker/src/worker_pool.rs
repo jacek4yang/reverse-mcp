@@ -197,6 +197,13 @@ impl WorkerPool {
             candidates.push(parent.join(sibling));
         }
         for c in candidates {
+            // Never probe this process itself: a probe of the current exe
+            // re-enters ensure_worker_exe in the child, and a stale/hung
+            // child binary would fork-bomb the machine (each probe spawning
+            // another probe). The current exe is the broker, not a worker.
+            if std::env::current_exe().is_ok_and(|cur| cur == c) {
+                continue;
+            }
             // A valid worker exe answers the mock probe with exit 0.
             let probed = std::process::Command::new(&c)
                 .args(["worker", "--probe-backend", "mock"])

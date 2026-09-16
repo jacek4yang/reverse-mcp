@@ -13,6 +13,7 @@ pub mod deep;
 pub mod dispatch;
 pub mod plan;
 pub mod state;
+pub mod types;
 pub mod workflow;
 
 /// Capability probe: does this build support backend `kind`? The broker runs

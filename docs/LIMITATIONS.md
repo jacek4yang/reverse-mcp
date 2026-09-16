@@ -26,7 +26,7 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 29 tools.
+- MCP stdio transport, 30 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -88,6 +88,18 @@ under "Shipped" does not work yet.
   with `budget_hit: true`. The engine does not yet implement full ctree
   slicing or virtual-call target resolution; indirect-call evidence is
   reported as heuristic, never confirmed.
+- #11 type recovery (real-IDA verified): `ida_type_recovery` aggregates
+  member-access evidence (typed `obj->field` and untyped pointer-arith
+  accesses) across functions into field proposals with per-field
+  read/write counts, candidate width/type and bounded confidence; shape
+  matching against existing local types; vtable scans mapping slots to
+  candidate methods. Proposal and apply are strictly separated
+  (`propose` is read-only; `create_struct` is the only mutation) and the
+  applied struct persists in the IDB. Scope notes: confidence is a simple
+  bounded heuristic, not a trained model; base/derived class recovery and
+  COM interface layouts are not yet inferred; constructor/destructor
+  identification is limited to vtable-write patterns encountered during
+  evidence walks (no dedicated ctor/dtor scanner yet).
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 
