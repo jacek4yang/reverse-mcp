@@ -1354,31 +1354,30 @@ async fn real_ida_issue12_binary_intel() {
     };
 
     // --- crypto scan: AES S-box and SHA-256 IV must surface, ranked ---
+    // (#47: result is cached + wrapped; findings carry provenance rows.)
     let scan = s
         .call("intel.crypto", json!({"max_findings": 50}))
         .await
         .expect("intel.crypto");
-    let findings = scan["findings"].as_array().expect("findings");
+    let findings = scan["result"]["findings"]
+        .as_array()
+        .or_else(|| scan["findings"].as_array())
+        .expect("findings");
     assert!(!findings.is_empty(), "crypto scan empty: {scan}");
-    let sbox_hit = findings
-        .iter()
-        .find(|f| f["name"].as_str() == Some("AES S-box"));
+    let sbox_hit = findings.iter().find(|f| {
+        f["label"].as_str() == Some("AES S-box") || f["name"].as_str() == Some("AES S-box")
+    });
     assert!(sbox_hit.is_some(), "AES S-box must be found: {scan}");
     let sbox = sbox_hit.unwrap();
     assert!(
         sbox["ea"].as_str().is_some() && sbox["confidence"].as_str().is_some(),
         "hit provenance: {sbox}"
     );
-    // SHA-256 IV stored as dwords: the scanner matches the little-endian
-    // leading bytes of H0.
     let iv_hit = findings.iter().find(|f| {
-        f["name"]
-            .as_str()
-            .map(|n| n.contains("SHA-256"))
-            .unwrap_or(false)
+        let lbl = f["label"].as_str().or(f["name"].as_str()).unwrap_or("");
+        lbl.contains("SHA-256")
     });
     assert!(iv_hit.is_some(), "SHA-256 IV must be found: {scan}");
-
     // --- API-hash resolver: ror13 detected, stored hashes verified ---
     let hashes = s
         .call("intel.api_hashes", json!({"max_findings": 50}))
@@ -2026,6 +2025,69 @@ async fn real_ida_issue46_transform_apply_rollback() {
         )
         .await
         .expect("re-apply");
+
+    s.call("db.close", json!({})).await.expect("db.close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}
+
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue47_rule_packs_parity_and_provenance() {
+    // Fixture: crypto.exe from #12 (AES S-box + SHA-256 constants at /Od /Zi).
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/crypto.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-issue47.exe");
+    let _ = std::fs::remove_file(format!("{}.i64", dst.display()));
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    s.call("analyze_wait", json!({})).await.expect("analyze");
+
+    // 1. Baseline (compiled-in #12 behavior): no rules dir next to the exe,
+    //    so load_effective falls back to the builtin pack. The scan must
+    //    still find the fixture's AES S-box (parity with #12).
+    let base = s
+        .call("intel.crypto", json!({"max_findings": 50}))
+        .await
+        .expect("baseline scan");
+    let base_res = &base["result"];
+    let base_hits = base_res["findings"].as_array().expect("findings").len();
+    assert!(base_hits >= 2, "crypto.exe must hit >= 2 constants: {base}");
+    for f in base_res["findings"].as_array().unwrap() {
+        assert!(
+            f["pack_sha256"].as_str().is_some(),
+            "provenance required: {f}"
+        );
+        assert!(f["rule"].as_str().is_some(), "rule id required: {f}");
+    }
+
+    // 2. packs_list: builtin pack must be listed with its sha256.
+    let packs = s.call("intel.packs", json!({})).await.expect("packs");
+    let names: Vec<&str> = packs["packs"]
+        .as_array()
+        .expect("packs array")
+        .iter()
+        .filter_map(|p| p["name"].as_str())
+        .collect();
+    assert!(
+        names.contains(&"builtin"),
+        "builtin pack must be listed: {packs}"
+    );
+
+    // 3. Cache: identical repeat on unchanged revision + pack set is free.
+    let rep = s
+        .call("intel.crypto", json!({"max_findings": 50}))
+        .await
+        .expect("repeat scan");
+    assert_eq!(
+        rep["cached"], true,
+        "identical repeat must hit cache: {rep}"
+    );
 
     s.call("db.close", json!({})).await.expect("db.close");
     drop(s);

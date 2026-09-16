@@ -883,9 +883,12 @@ pub async fn tool_intel(broker: &Broker, args: Value) -> Result<Value, McpError>
         "crypto_scan" => "intel.crypto",
         "resolve_api_hashes" => "intel.api_hashes",
         "recover_strings" => "intel.strings",
+        "packs_list" => "intel.packs",
         other => {
             return Err(McpError::invalid_params(
-                format!("unknown task '{other}' (crypto_scan|resolve_api_hashes|recover_strings)"),
+                format!(
+                    "unknown task '{other}' (crypto_scan|resolve_api_hashes|recover_strings|packs_list)"
+                ),
                 None,
             ));
         }
