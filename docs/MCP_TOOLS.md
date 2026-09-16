@@ -1,11 +1,18 @@
 ﻿# MCP Tools Reference
 
-Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
+Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
 33 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
+
+Timeouts: long-running analysis tools accept an agent-controlled
+`timeout_ms` (clamped 5s..30min broker-side). Defaults: 600s for
+`ida_deep` / `ida_type_recovery` / `ida_intel` / `ida_analyze`; 300s for
+`ida_deobfuscate` / `ida_sig`; 120s for all other calls. A budget hit returns
+partial results with a resume token instead of an error where the engine
+supports it (see `ida_deep`).
 
 ## Session / environment
 

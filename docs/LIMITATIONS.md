@@ -1,14 +1,14 @@
 # Limitations & Roadmap
 
-Status: accurate as of commit `b8fe1cd` (2026-09-15), main branch.
+Status: accurate as of the `feat/issue49-docs-sync` branch (2026-09-16), after PR #26 merged to main.
 
 This document exists so the tool set is never overstated. Anything not listed
 under "Shipped" does not work yet.
 
 ## Shipped (real, tested)
 
-- Single `reverse-mcp.exe`: broker (MCP stdio) + self-spawned `worker` mode
-  processes; one worker per loaded IDB.
+- Single `reverse-mcp.exe`: broker (MCP stdio / `serve --http`) + self-spawned
+  `worker` mode processes; one worker per loaded IDB.
 - Real IDA 9.2 backend: open/save/close, auto-analysis, functions, segments,
   strings, names, bytes read, xrefs (to/from), disassembly, Hex-Rays
   decompilation, rename, comments, bookmarks, plugins.
@@ -26,7 +26,8 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 33 tools.
+- MCP transports: stdio and Streamable HTTP (`serve --http`, loopback
+  default), 33 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -142,8 +143,8 @@ under "Shipped" does not work yet.
 - `ida_types action=set`: returns `capability_unavailable`; only `list`/`get`
   of local types are wired, and even those are partial (til access via the
   vendored binding is limited).
-- `microcode: false` — microcode generation/inspection is NOT implemented in
-  #19 and is reported as unsupported in capabilities (planned in #9).
+- `microcode: false` — microcode generation/inspection is NOT implemented and
+  is reported as unsupported in capabilities (tracked in #43).
 - `func.switch_info`: implemented against `get_switch_info()`, but on the
   test fixture the switch compiles to a cmp chain (no jump table), so no
   address carries switch info there; a real jump-table switch is required to
@@ -155,14 +156,10 @@ under "Shipped" does not work yet.
   `hr.cfunc` lvars; renaming a lvar that shares its defea with another lvar
   (e.g. two args keyed to the entry) may rename the matching locator slot
   rather than a specific one.
-- stdio only: no Streamable HTTP transport yet.
-- No worker crash recovery yet: an unexpected worker death fails pending
-  requests; the caller must close and reopen the DB. No state machine, no
-  automatic respawn.
 - Windows x86_64 verified only. Linux/macOS paths exist in discovery and
   DotSlash pinfiles cover linux-x86_64/macos-x86_64/macos-aarch64, but no
   real-IDA runtime test has passed there — platform support is claimed only
-  from tested facts.
+  from tested facts (expansion tracked in #48).
 - One verified backend version: 9.2 (pinned in the backend registry with
   SDK commit + FFI/generator versions + ABI probe facts). Other installed
   IDA versions are discovered and reported as `backend unavailable`.
@@ -172,17 +169,20 @@ under "Shipped" does not work yet.
 - `revision` is per-worker-process memory: it does not survive close/reopen.
 - `ida_batch` is read-only by design.
 
-## Roadmap (in planned order)
+## Roadmap (see open issues for current order)
 
-1. Real types support (til access, function prototypes, apply type) and real
-   IDB byte patching (hex validation, old bytes, persist after save/reopen).
-2. Worker crash recovery: state machine (Healthy → Crashed → Recovering →
-   Healthy), bounded respawn with backoff, session metadata persisted in the
-   broker, restore the same public db handle; never replay unknown-success
-   mutations.
-3. Streamable HTTP transport (loopback default) + multi-agent stress tests.
-4. DotSlash toolchain for public build deps (LLVM/libclang only — never IDA)
-   + ABI probe hardening in `reverse-ida-sys`.
+Tracked as GitHub issues (#43–#50): microcode-level transforms (#43),
+value/register analysis (#44), block-level binary diff (#45), deobfuscation
+transforms with rollback (#46), external rule packs (#47), platform/version
+expansion (#48), real-IDA benchmark suite (#50). Items below are landed and
+kept for history:
+
+1. ~~Real types support and real IDB byte patching~~ (landed: #19/#16).
+2. ~~Worker crash recovery: state machine with bounded respawn/backoff~~
+   (landed: #15, `crates/rmcp-broker/src/recovery.rs`).
+3. ~~Streamable HTTP transport (loopback default) + multi-agent stress tests~~
+   (landed: #15, `serve --http`).
+4. ~~DotSlash toolchain + ABI probe~~ (landed: #17).
 5. Docs polish, release pipeline, `v0.1.0` artifact
    (`reverse-mcp-v0.1.0-windows-x86_64.zip` + SHA-256), gated on the local
-   real-IDA acceptance chain.
+   real-IDA acceptance chain (release pipeline itself still open).
