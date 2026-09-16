@@ -175,8 +175,8 @@ fn defs() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "ida_hr",
-            description: "Hex-Rays structured view: action=cfunc (bounded typed ctree node summaries, lvars with type/width/arg flags, return type) or lvar_rename (ea + var_defea + name; bumps revision).",
-            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["cfunc", "lvar_rename"]}, "ea": {"type": "string"}, "var_defea": {"type": "string"}, "name": {"type": "string"}, "include_ctree": {"type": "boolean"}, "include_lvars": {"type": "boolean"}, "limit": {"type": "integer", "maximum": 50000}, "expected_revision": {"type": "integer"}}, "required": ["ea"]}),
+            description: "Hex-Rays structured view: action=cfunc (bounded typed ctree node summaries, lvars with type/width/arg flags, return type), action=microcode (bounded microcode dump at maturity 0-7: blocks with pred/succ/insn counts + rendered instructions with opcode/operand kinds/immediates; revision-keyed cache), or lvar_rename (ea + var_defea + name; bumps revision).",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["cfunc", "microcode", "lvar_rename"]}, "ea": {"type": "string"}, "var_defea": {"type": "string"}, "name": {"type": "string"}, "include_ctree": {"type": "boolean"}, "include_lvars": {"type": "boolean"}, "limit": {"type": "integer", "maximum": 50000}, "maturity": {"type": "integer", "maximum": 7}, "max_insns": {"type": "integer", "maximum": 20000}, "expected_revision": {"type": "integer"}}, "required": ["action", "ea"]}),
         },
         ToolDef {
             name: "ida_insn",

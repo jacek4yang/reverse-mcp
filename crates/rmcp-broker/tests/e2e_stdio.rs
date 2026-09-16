@@ -155,6 +155,28 @@ async fn e2e_stdio_mock_wired() {
         "decompile response: {text}"
     );
 
+    // #43: microcode dump through ida_hr (mock backend -> deterministic mba)
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_hr").with_arguments(
+                json!({"db": handle, "action": "microcode", "ea": "0x401200", "max_insns": 2})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("ida_hr microcode");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"maturity\"") && text.contains("\"insns\""),
+        "microcode response: {text}"
+    );
+    assert!(
+        text.contains("\"truncated\": true"),
+        "max_insns=2 must truncate the 3-insn fake mba: {text}"
+    );
+
     // edit (rename) then verify revision
     let resp = client
         .call_tool(

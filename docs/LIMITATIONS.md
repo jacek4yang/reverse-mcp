@@ -20,8 +20,19 @@ under "Shipped" does not work yet.
   hr.cfunc (bounded typed ctree node summaries with rendered text, lvars with
   type/width/arg flags, return type), hr.lvar_rename (persists via user lvar
   settings, visible in re-decompilation). Capabilities extended honestly with
-  `ctree`, `lvars`, `microcode:false`, `switches`, `fixups`, `tails`,
-  `sp_delta`, `file_map`.
+  `ctree`, `lvars`, `microcode` (see the #43 entry below), `switches`, `fixups`,
+  `tails`, `sp_delta`, `file_map`.
+- #43 microcode generation/inspection (real-IDA verified on
+  `tests/fixtures/obfuscated.exe`): `ida_hr action=microcode` runs the full
+  Hex-Rays microcode pipeline (gen_microcode up to MMAT_* maturity) for one
+  function and returns a bounded dump — blocks (serial, type, start/end EA,
+  MBL_ flags, pred/succ/insn counts) and rendered instructions (mcode opcode,
+  operand kinds as mopt_t codes, destination size, immediate value, SDK text).
+  Analysis-only: the mba is generated, walked and freed inside the worker shim
+  (natural[] access, no QASSERT data imports, so /DELAYLOAD stays intact).
+  max_insns (default 2000, cap 20000) bounds the dump; tiny budgets set
+  `truncated`. Repeats on an unchanged revision are served from the
+  revision-keyed cache (`cached:true`); any mutation invalidates it.
 - Multi-version discovery with per-version backend readiness; refused fallback.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
@@ -143,8 +154,11 @@ under "Shipped" does not work yet.
 - `ida_types action=set`: returns `capability_unavailable`; only `list`/`get`
   of local types are wired, and even those are partial (til access via the
   vendored binding is limited).
-- `microcode: false` — microcode generation/inspection is NOT implemented and
-  is reported as unsupported in capabilities (tracked in #43).
+- `microcode: true` as of #43 — `ida_hr action=microcode` generates microcode
+  up to a requested maturity (MMAT_*) and returns a bounded block/insn dump
+  (read-only, revision-keyed cache). Microcode-level *transforms* (unflattening
+  etc.) remain proposals only; they are tracked in #46 and require the
+  microcode transform infrastructure, which does not apply IDB mutations yet.
 - `func.switch_info`: implemented against `get_switch_info()`, but on the
   test fixture the switch compiles to a cmp chain (no jump table), so no
   address carries switch info there; a real jump-table switch is required to

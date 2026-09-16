@@ -20,7 +20,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | bytes/data | implemented, real-IDA tested | implemented | implemented | implemented | implemented | implemented | n/a | n/a | n/a |
 | Hex-Rays pseudocode | implemented, real-IDA tested ([hr](../crates/rmcp-ida/src/idalib_backend.rs)) | implemented | implemented | implemented | implemented | implemented | implemented | n/a | n/a |
 | ctree | implemented (bounded walk, [caps](../vendor/idalib/src/caps.rs)) | n/a | n/a | n/a | n/a | implemented | implemented | n/a | n/a |
-| microcode | partial (analysis hooks; no transforms yet) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
+| microcode | implemented (generation+inspection via `ida_hr action=microcode`, real-IDA tested; transforms are proposals, tracked in #46) | n/a | n/a | n/a | n/a | implemented | n/a | n/a | n/a |
 | types/structs/enums | implemented, real-IDA tested ([types](../crates/rmcp-worker/src/types.rs)) | implemented | implemented | implemented | implemented | implemented | implemented | n/a | n/a |
 | stack frames/lvars | implemented (lvar rename, real-IDA tested) | implemented | implemented | implemented | partial | implemented | implemented | n/a | n/a |
 | vtable/classes | implemented (evidence + vtable scan, real-IDA tested) | partial | partial | partial | n/a | implemented | implemented | n/a | n/a |

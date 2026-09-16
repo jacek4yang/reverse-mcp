@@ -674,6 +674,42 @@ fn dispatch(
                 "result": result,
             }))
         }
+        // ---- #43: microcode (analysis-only generation + bounded dump).
+        // Revision-keyed cache: identical dumps on an unchanged DB are free;
+        // any mutation invalidates them via the revision bump.
+        "hr.microcode" => {
+            let ea = ea_param(&params, "ea")?;
+            let req_maturity = params
+                .get("maturity")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                .clamp(0, 7) as u32;
+            let max_insns = params
+                .get("max_insns")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(2000)
+                .clamp(1, 20_000) as usize;
+            let current_rev = need_backend(state)?.revision();
+            let key = (
+                "hr_microcode".to_string(),
+                format!("{ea:#x}|{req_maturity}|{max_insns}"),
+                current_rev,
+            );
+            if let Some(cached) = state.workflow_cache.get(&key) {
+                return Ok(json!({
+                    "cached": true,
+                    "cache_hits": state.workflow_cache.hits,
+                    "result": cached,
+                }));
+            }
+            let result = need_backend(state)?.hr_microcode(ea, req_maturity, max_insns)?;
+            state.workflow_cache.put(key, result.clone());
+            Ok(json!({
+                "cached": false,
+                "cache_hits": state.workflow_cache.hits,
+                "result": result,
+            }))
+        }
         // ---- #11: type recovery ----
         "types.evidence" => {
             let ea = ea_param(&params, "ea")?;
@@ -1167,6 +1203,83 @@ mod tests {
         );
         let out = r.result.expect("hr.lvar_rename must pass");
         assert_eq!(out["changed"], true);
+    }
+
+    #[test]
+    fn microcode_dump_cache_and_invalidations() {
+        let mut state = mock_worker();
+        let _ = send(&mut state, 1, "db.open", json!({"path": "fixture.i64"}));
+
+        // capabilities report microcode honestly for this backend
+        let r = send(&mut state, 2, "capabilities", json!({}));
+        let caps = r.result.expect("capabilities");
+        assert_eq!(caps["microcode"], true);
+
+        // first dump: miss, deterministic fake mba with 3 blocks
+        let r = send(&mut state, 3, "hr.microcode", json!({"ea": "0x401200"}));
+        let out = r.result.expect("hr.microcode must pass");
+        assert_eq!(out["cached"], false);
+        let dump = out["result"].as_object().expect("dump object");
+        assert_eq!(dump["qty"], 3);
+        let insns = dump["insns"].as_array().expect("insns");
+        assert_eq!(insns.len(), 3);
+        assert_eq!(insns[0]["opcode"], 4); // m_mov
+        assert_eq!(insns[0]["n_value"], 0x5A);
+        assert!(!insns[0]["text"].as_str().unwrap().is_empty());
+
+        // tiny budget truncates and flags it
+        let r = send(
+            &mut state,
+            4,
+            "hr.microcode",
+            json!({"ea": "0x401200", "max_insns": 1}),
+        );
+        let out = r.result.expect("bounded dump must pass");
+        let dump = out["result"].as_object().unwrap();
+        assert_eq!(dump["insns"].as_array().unwrap().len(), 1);
+        assert_eq!(dump["truncated"], true);
+
+        // maturity is clamped to the documented range
+        let r = send(
+            &mut state,
+            5,
+            "hr.microcode",
+            json!({"ea": "0x401200", "maturity": 99}),
+        );
+        let out = r.result.expect("maturity clamp");
+        assert_eq!(out["result"]["maturity"], 7);
+
+        // second identical dump hits the revision-keyed cache
+        let r = send(&mut state, 6, "hr.microcode", json!({"ea": "0x401200"}));
+        let out = r.result.expect("cached dump");
+        assert_eq!(out["cached"], true);
+        assert_eq!(out["cache_hits"], 1);
+
+        // a mutation bumps the revision -> cache invalidated, fresh run
+        let r = send(
+            &mut state,
+            7,
+            "rename",
+            json!({"ea": "0x401100", "name": "renamed_helper"}),
+        );
+        assert!(r.error.is_none(), "rename failed: {r:?}");
+        let r = send(&mut state, 8, "hr.microcode", json!({"ea": "0x401200"}));
+        let out = r.result.expect("post-mutation dump");
+        assert_eq!(out["cached"], false);
+
+        // decompile-disabled backend reports capability_unavailable
+        let mut state2 = WorkerState::new();
+        state2.backend = Some(Box::new(rmcp_ida::MockBackend::new().without_decompile()));
+        let _ = send(&mut state2, 1, "db.open", json!({"path": "fixture.i64"}));
+        let r = handle(
+            &mut state2,
+            WorkerRequest {
+                id: 9,
+                method: "hr.microcode".into(),
+                params: json!({"ea": "0x401200"}),
+            },
+        );
+        assert_eq!(r.error.unwrap().code, "capability_unavailable");
     }
 
     #[test]

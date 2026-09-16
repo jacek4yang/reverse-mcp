@@ -1706,3 +1706,125 @@ async fn real_ida_issue13_signatures() {
     pool.close(&h1).await.expect("close h1");
     pool.close(&h2).await.expect("close h2");
 }
+
+// ---------------------------------------------------------------------------
+// #43: microcode generation/inspection (real-IDA gated)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue43_microcode() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/obfuscated.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-43.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let fresh_i64 = std::path::PathBuf::from(format!("{}.i64", dst.display()));
+    let _ = std::fs::remove_file(&fresh_i64);
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    // capabilities must now honestly report microcode support
+    let caps = s
+        .call("capabilities", json!({}))
+        .await
+        .expect("capabilities");
+    assert_eq!(
+        caps["microcode"], true,
+        "idalib backend must report microcode:true; got {caps}"
+    );
+
+    // pick the flattened function; MSVC emits ILT wrapper thunks, so try
+    // every candidate until one yields a real body (a thunk is a tiny
+    // jmp-stub mba with 3 blocks, the real flattened body has ~19).
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let candidates: Vec<u64> = fns
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["name"].as_str().is_some_and(|n| n.contains("flattened")))
+        .filter_map(|f| f["ea_start"].as_u64())
+        .collect();
+    assert!(!candidates.is_empty(), "flattened function not found");
+
+    let mut flat_ea = 0u64;
+    for c in &candidates {
+        let r = s
+            .call("hr.microcode", json!({"ea": c, "max_insns": 300}))
+            .await
+            .expect("hr.microcode");
+        // the worker wraps the dump under `result` (cache envelope)
+        let qty = r["result"]["qty"].as_u64().unwrap_or(0);
+        eprintln!("candidate {c:#x} qty={qty}");
+        if qty >= 5 {
+            flat_ea = *c;
+            break;
+        }
+    }
+    assert!(flat_ea != 0, "no flattened candidate produced microcode");
+
+    // 1. bounded dump: maturity, blocks and rendered insns present
+    let out = s
+        .call("hr.microcode", json!({"ea": flat_ea, "max_insns": 300}))
+        .await
+        .expect("hr.microcode");
+    let dump = &out["result"]; // warm from the candidate loop
+    let maturity = dump["maturity"].as_u64().unwrap();
+    assert!(
+        maturity >= 1,
+        "microcode must be generated, maturity={maturity}"
+    );
+    let insns = dump["insns"].as_array().expect("insns array");
+    assert!(!insns.is_empty(), "flattened() must produce instructions");
+    for i in insns.iter().take(5) {
+        assert!(i["ea"].as_u64().is_some(), "insn missing ea: {i}");
+        assert!(
+            i["text"].as_str().map(|t| !t.is_empty()).unwrap_or(false),
+            "insn missing rendered text: {i}"
+        );
+    }
+
+    // 2. budget truncation: tiny cap -> truncated flag, partial insns
+    let out2 = s
+        .call("hr.microcode", json!({"ea": flat_ea, "max_insns": 3}))
+        .await
+        .expect("bounded dump");
+    let dump2 = &out2["result"];
+    let insns2 = dump2["insns"].as_array().unwrap();
+    assert!(insns2.len() <= 3, "budget must bound insns");
+    assert_eq!(dump2["truncated"], true, "tiny budget must flag truncation");
+
+    // 3. cache: identical request on unchanged DB is served free
+    let out3 = s
+        .call("hr.microcode", json!({"ea": flat_ea, "max_insns": 300}))
+        .await
+        .expect("repeat dump");
+    assert_eq!(out3["cached"], true, "identical dump must hit the cache");
+
+    // 4. mutation invalidates: rename bumps revision -> cache miss again
+    s.call(
+        "rename",
+        json!({"ea": flat_ea, "name": "flattened_renamed"}),
+    )
+    .await
+    .expect("rename");
+    let out4 = s
+        .call("hr.microcode", json!({"ea": flat_ea, "max_insns": 300}))
+        .await
+        .expect("post-mutation dump");
+    assert_eq!(out4["cached"], false, "mutation must invalidate the cache");
+
+    // 5. decompile of the same function still works (analysis untouched)
+    s.call("decompile", json!({"ea": flat_ea}))
+        .await
+        .expect("decompile after microcode dump");
+
+    s.call("db.close", json!({})).await.expect("db.close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}

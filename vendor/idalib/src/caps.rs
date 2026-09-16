@@ -516,3 +516,116 @@ pub fn udt_match_shape(shape: &[(u64, u64)]) -> Option<String> {
     let name = unsafe { ffi::ffix::idalib_udt_match_shape(cspec.as_ptr()) }.to_string();
     if name.is_empty() { None } else { Some(name) }
 }
+
+// ---- microcode (#43): bounded mba generation/inspection ----
+
+/// One microcode basic block summary.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MBlockRow {
+    pub serial: u32,
+    pub block_type: u32,
+    pub start_ea: u64,
+    pub end_ea: u64,
+    pub flags: u32,
+    pub n_pred: u32,
+    pub n_succ: u32,
+    pub n_insns: u32,
+}
+
+/// One microinstruction summary. `text` is the SDK-rendered instruction;
+/// operand kinds are mopt_t codes (0=z, 1=r, 2=n immediate, 4=d sub-insn,
+/// 5=S stack var, 6=v global, 9=l lvar, ...).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MInsnRow {
+    pub block: u32,
+    pub opcode: u32,
+    pub ea: u64,
+    pub l_type: u32,
+    pub r_type: u32,
+    pub d_type: u32,
+    pub d_size: i32,
+    pub n_value: u64,
+    pub text: String,
+}
+
+/// Bounded microcode dump of one function at the requested maturity.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MbaDump {
+    pub maturity: u32,
+    pub qty: u32,
+    pub truncated: bool,
+    pub blocks: Vec<MBlockRow>,
+    pub insns: Vec<MInsnRow>,
+}
+
+impl MbaDump {
+    unsafe fn from_raw(raw: *mut ffi::ffix::hexrays_mba_dump_t) -> Option<MbaDump> {
+        unsafe {
+            if raw.is_null() {
+                return None;
+            }
+            let d = &*raw;
+            let blocks = (0..ffi::ffix::idalib_hexrays_mba_blocks(d))
+                .map(|i| MBlockRow {
+                    serial: ffi::ffix::idalib_hexrays_mba_block_serial(d, i),
+                    block_type: ffi::ffix::idalib_hexrays_mba_block_type(d, i),
+                    start_ea: ffi::ffix::idalib_hexrays_mba_block_start(d, i),
+                    end_ea: ffi::ffix::idalib_hexrays_mba_block_end(d, i),
+                    flags: ffi::ffix::idalib_hexrays_mba_block_flags(d, i),
+                    n_pred: ffi::ffix::idalib_hexrays_mba_block_npred(d, i),
+                    n_succ: ffi::ffix::idalib_hexrays_mba_block_nsucc(d, i),
+                    n_insns: ffi::ffix::idalib_hexrays_mba_block_ninsns(d, i),
+                })
+                .collect();
+            let insns = (0..ffi::ffix::idalib_hexrays_mba_insns(d))
+                .map(|i| MInsnRow {
+                    block: ffi::ffix::idalib_hexrays_minsn_block(d, i),
+                    opcode: ffi::ffix::idalib_hexrays_minsn_opcode(d, i),
+                    ea: ffi::ffix::idalib_hexrays_minsn_ea(d, i),
+                    l_type: ffi::ffix::idalib_hexrays_minsn_l_type(d, i),
+                    r_type: ffi::ffix::idalib_hexrays_minsn_r_type(d, i),
+                    d_type: ffi::ffix::idalib_hexrays_minsn_d_type(d, i),
+                    d_size: ffi::ffix::idalib_hexrays_minsn_d_size(d, i),
+                    n_value: ffi::ffix::idalib_hexrays_minsn_n_value(d, i),
+                    text: ffi::ffix::idalib_hexrays_minsn_text(d, i).to_string(),
+                })
+                .collect();
+            let out = MbaDump {
+                maturity: ffi::ffix::idalib_hexrays_mba_maturity(d),
+                qty: ffi::ffix::idalib_hexrays_mba_qty(d),
+                truncated: ffi::ffix::idalib_hexrays_mba_truncated(d),
+                blocks,
+                insns,
+            };
+            ffi::ffix::idalib_hexrays_minsn_rows_free(raw);
+            Some(out)
+        }
+    }
+}
+
+/// Generate microcode for `f` up to `req_maturity` (an MMAT_* value), with a
+/// hard cap on collected instructions. Read-only: the mba is generated, walked
+/// and freed inside the shim; nothing is cached in the cfunc layer.
+/// Returns None when Hex-Rays failed (see `err` via the caller-supplied
+/// failure hook); the error text is carried in the returned row on failure.
+pub fn gen_microcode_dump(
+    f: *mut func::func_t,
+    decomp_flags: autocxx::c_int,
+    req_maturity: u32,
+    max_insns: usize,
+) -> Result<MbaDump, String> {
+    unsafe {
+        let mut err = ffi::ffix::hexrays_error_t::default();
+        let raw = ffi::ffix::idalib_hexrays_gen_microcode(
+            f,
+            &mut err,
+            decomp_flags,
+            req_maturity,
+            max_insns,
+        );
+        match MbaDump::from_raw(raw) {
+            Some(d) => Ok(d),
+            None => Err(err.desc.to_string()),
+        }
+    }
+}

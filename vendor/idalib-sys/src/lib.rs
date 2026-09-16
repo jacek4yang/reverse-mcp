@@ -165,7 +165,7 @@ include_cpp! {
     generate!("FC_NOPREDS")
     generate!("FC_OUTLINES")
 
-    // hexrays �?init/term are hand-written shims in hexrays_extras.h; the
+    // hexrays 锟?init/term are hand-written shims in hexrays_extras.h; the
     // SDK inline functions expand to the `callui` data import of ida.dll,
     // which is incompatible with delay-loading.
     generate!("cfuncptr_t")
@@ -801,6 +801,39 @@ pub mod ffix {
 
         unsafe fn idalib_udt_create(name: *const c_char, decl_items: *const c_char) -> u32;
         unsafe fn idalib_udt_match_shape(shape: *const c_char) -> String;
+
+        // ---- issue #43: microcode generation/inspection ----
+        type hexrays_mba_dump_t;
+        unsafe fn idalib_hexrays_gen_microcode(
+            f: *mut func_t,
+            err: *mut hexrays_error_t,
+            decomp_flags: c_int,
+            req_maturity: u32,
+            max_insns: usize,
+        ) -> *mut hexrays_mba_dump_t;
+        unsafe fn idalib_hexrays_minsn_rows_free(dump: *mut hexrays_mba_dump_t);
+        unsafe fn idalib_hexrays_mba_blocks(d: &hexrays_mba_dump_t) -> usize;
+        unsafe fn idalib_hexrays_mba_block_serial(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_mba_block_type(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_mba_block_start(d: &hexrays_mba_dump_t, i: usize) -> u64;
+        unsafe fn idalib_hexrays_mba_block_end(d: &hexrays_mba_dump_t, i: usize) -> u64;
+        unsafe fn idalib_hexrays_mba_block_flags(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_mba_block_npred(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_mba_block_nsucc(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_mba_block_ninsns(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_mba_insns(d: &hexrays_mba_dump_t) -> usize;
+        unsafe fn idalib_hexrays_minsn_block(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_minsn_opcode(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_minsn_ea(d: &hexrays_mba_dump_t, i: usize) -> u64;
+        unsafe fn idalib_hexrays_minsn_l_type(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_minsn_r_type(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_minsn_d_type(d: &hexrays_mba_dump_t, i: usize) -> u32;
+        unsafe fn idalib_hexrays_minsn_d_size(d: &hexrays_mba_dump_t, i: usize) -> i32;
+        unsafe fn idalib_hexrays_minsn_n_value(d: &hexrays_mba_dump_t, i: usize) -> u64;
+        unsafe fn idalib_hexrays_minsn_text(d: &hexrays_mba_dump_t, i: usize) -> String;
+        unsafe fn idalib_hexrays_mba_maturity(d: &hexrays_mba_dump_t) -> u32;
+        unsafe fn idalib_hexrays_mba_qty(d: &hexrays_mba_dump_t) -> u32;
+        unsafe fn idalib_hexrays_mba_truncated(d: &hexrays_mba_dump_t) -> bool;
 
         type plugin_t = super::ffi::plugin_t;
 
