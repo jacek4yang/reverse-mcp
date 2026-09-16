@@ -25,7 +25,7 @@ impl BorrowCode for McpError {
     }
 }
 
-/// ida_capabilities 鈥?what this server can do (static + backend-driven).
+/// ida_capabilities - what this server can do (static + backend-driven).
 pub async fn tool_capabilities(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -53,7 +53,7 @@ pub async fn tool_capabilities(broker: &Broker, args: Value) -> Result<Value, Mc
     Ok(out)
 }
 
-/// ida_db 鈥?open/close/save/info/list.
+/// ida_db - open/close/save/info/list.
 pub async fn tool_db(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let action = arg_str(&args, "action").unwrap_or("info");
     match action {
@@ -120,7 +120,7 @@ pub async fn tool_db(broker: &Broker, args: Value) -> Result<Value, McpError> {
     }
 }
 
-/// ida_functions 鈥?paginated function list.
+/// ida_functions - paginated function list.
 pub async fn tool_functions(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -137,7 +137,7 @@ pub async fn tool_functions(broker: &Broker, args: Value) -> Result<Value, McpEr
     Ok(json!({"db": db, "functions": bound_output(broker, "ida_functions", out)}))
 }
 
-/// ida_inspect 鈥?everything known about one address.
+/// ida_inspect - everything known about one address.
 pub async fn tool_inspect(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let ea = args
@@ -216,7 +216,7 @@ pub async fn tool_xrefs(broker: &Broker, args: Value) -> Result<Value, McpError>
     Ok(json!({"db": db, "direction": dir, "xrefs": bound_output(broker, "ida_xrefs", out)}))
 }
 
-/// ida_graph 鈥?call graph or CFG around a function.
+/// ida_graph - call graph or CFG around a function.
 pub async fn tool_graph(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let ea = args
@@ -281,7 +281,7 @@ pub async fn tool_search(broker: &Broker, args: Value) -> Result<Value, McpError
     Ok(json!({"db": db, "hits": bound_output(broker, "ida_search", out)}))
 }
 
-/// ida_bytes 鈥?get or patch.
+/// ida_bytes - get or patch.
 pub async fn tool_bytes(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let ea = args
@@ -345,7 +345,7 @@ pub async fn tool_types(broker: &Broker, args: Value) -> Result<Value, McpError>
     }
 }
 
-/// ida_edit 鈥?rename / comment.
+/// ida_edit - rename / comment.
 pub async fn tool_edit(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let ea = args
@@ -380,7 +380,7 @@ pub async fn tool_edit(broker: &Broker, args: Value) -> Result<Value, McpError> 
     ))
 }
 
-/// ida_analysis 鈥?wait for analysis.
+/// ida_analysis - wait for analysis.
 pub async fn tool_analysis(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -388,7 +388,7 @@ pub async fn tool_analysis(broker: &Broker, args: Value) -> Result<Value, McpErr
     Ok(json!({"db": db, "analysis": out}))
 }
 
-/// ida_batch 鈥?run multiple operations; per-op results, capped count.
+/// ida_batch - run multiple operations; per-op results, capped count.
 pub async fn tool_batch(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let ops = args
         .get("operations")
@@ -415,7 +415,7 @@ pub async fn tool_batch(broker: &Broker, args: Value) -> Result<Value, McpError>
     Ok(json!({"results": results}))
 }
 
-/// ida_result 鈥?read/find/metadata/release spilled results.
+/// ida_result - read/find/metadata/release spilled results.
 pub async fn tool_result(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let action = arg_str(&args, "action").unwrap_or("read");
     match action {
@@ -457,7 +457,7 @@ pub async fn tool_result(broker: &Broker, args: Value) -> Result<Value, McpError
     }
 }
 
-/// ida_segments handled inside functions tool? No 鈥?own tool slice via inspect.
+/// ida_segments handled inside functions tool? No - own tool slice via inspect.
 pub async fn tool_segments(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -465,7 +465,7 @@ pub async fn tool_segments(broker: &Broker, args: Value) -> Result<Value, McpErr
     Ok(json!({"db": db, "segments": out}))
 }
 
-/// ida_metadata 鈥?extended DB metadata: input hashes, image base, entry
+/// ida_metadata - extended DB metadata: input hashes, image base, entry
 /// points (issue #19 `db.metadata`). TLS callbacks / exception handlers are
 /// reported as unsupported when the backend does not expose them.
 pub async fn tool_metadata(broker: &Broker, args: Value) -> Result<Value, McpError> {
@@ -475,7 +475,7 @@ pub async fn tool_metadata(broker: &Broker, args: Value) -> Result<Value, McpErr
     Ok(json!({"db": db, "metadata": bound_output(broker, "ida_metadata", out)}))
 }
 
-/// ida_imports 鈥?imported modules and entries (issue #19 `imports.list`).
+/// ida_imports - imported modules and entries (issue #19 `imports.list`).
 pub async fn tool_imports(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -493,7 +493,7 @@ pub async fn tool_imports(broker: &Broker, args: Value) -> Result<Value, McpErro
     Ok(json!({"db": db, "imports": bound_output(broker, "ida_imports", out)}))
 }
 
-/// ida_fixups 鈥?fixup/relocation records (issue #19 `fixups.list`).
+/// ida_fixups - fixup/relocation records (issue #19 `fixups.list`).
 pub async fn tool_fixups(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -510,7 +510,7 @@ pub async fn tool_fixups(broker: &Broker, args: Value) -> Result<Value, McpError
     Ok(json!({"db": db, "fixups": bound_output(broker, "ida_fixups", out)}))
 }
 
-/// ida_filemap 鈥?EA <-> input-file offset mapping (issue #19 `file.map`).
+/// ida_filemap - EA <-> input-file offset mapping (issue #19 `file.map`).
 pub async fn tool_filemap(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let value = args.get("value").and_then(parse_ea).ok_or_else(|| {
@@ -528,7 +528,7 @@ pub async fn tool_filemap(broker: &Broker, args: Value) -> Result<Value, McpErro
     Ok(json!({"db": db, "map": out}))
 }
 
-/// ida_func 鈥?function-structure operations: tails (chunks), create,
+/// ida_func - function-structure operations: tails (chunks), create,
 /// delete, resize, switch info, sp delta (issue #19 function module).
 /// Mutating actions bump the revision and honour expected_revision.
 pub async fn tool_func(broker: &Broker, args: Value) -> Result<Value, McpError> {
@@ -611,7 +611,7 @@ pub async fn tool_func(broker: &Broker, args: Value) -> Result<Value, McpError> 
     Ok(json!({"db": db, "action": action, "result": out}))
 }
 
-/// ida_hr 鈥?Hex-Rays ctree/lvar summaries and lvar rename
+/// ida_hr - Hex-Rays ctree/lvar summaries and lvar rename
 /// (issue #19 `hr.cfunc` / `hr.lvar_rename`), bounded by `limit`.
 pub async fn tool_hr(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
@@ -673,7 +673,7 @@ pub async fn tool_hr(broker: &Broker, args: Value) -> Result<Value, McpError> {
     }
 }
 
-/// ida_insn 鈥?instruction metadata: canon feature bits + mnemonic
+/// ida_insn - instruction metadata: canon feature bits + mnemonic
 /// (issue #19 `insn.features`), plus name demangling (`names.demangle`).
 /// ida_value - bounded constant/value propagation + indirect-call target
 /// proposals (issue #44 `value.propagate`), agent-budgeted and cached.
@@ -730,7 +730,7 @@ pub async fn tool_insn(broker: &Broker, args: Value) -> Result<Value, McpError> 
     Ok(json!({"db": db, "result": out}))
 }
 
-/// ida_installations 鈥?all discovered IDA installs with version, source,
+/// ida_installations - all discovered IDA installs with version, source,
 /// decompilers and backend readiness, so the agent can pick one explicitly
 /// via `ida_db(action=open, ida_version=...)`.
 pub async fn tool_installations(broker: &Broker, _args: Value) -> Result<Value, McpError> {
@@ -746,7 +746,7 @@ pub async fn tool_installations(broker: &Broker, _args: Value) -> Result<Value, 
     }))
 }
 
-/// ida_mutation 鈥?#16 transaction-like mutation layer: plan (validate +
+/// ida_mutation -#16 transaction-like mutation layer: plan (validate +
 /// preview without changing anything), apply (whole-plan revision guard,
 /// sequential execution, partial-outcome reporting), audit (bounded trail of
 /// applied mutations with old/new state), snapshot/restore (IDB rollback).
@@ -996,7 +996,7 @@ pub async fn tool_sig(broker: &Broker, args: Value) -> Result<Value, McpError> {
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries
 /// concrete matched evidence; the score is derived from it, never opaque.
-/// ida_health 鈥?self-report that works even when no IDA install is found.
+/// ida_health - self-report that works even when no IDA install is found.
 /// Surfaces discovery results, runtime-DLL presence, worker-exe probe and
 /// idalib-feature availability so agents can self-diagnose instead of guessing.
 pub async fn tool_evidence(broker: &Broker, args: Value) -> Result<Value, McpError> {
@@ -1155,7 +1155,7 @@ fn mcp_code(code: &str, message: &str) -> McpError {
     McpError::invalid_params(format!("[{code}] {message}"), None)
 }
 
-/// Parse an EA from hex (0x鈥? or decimal.
+/// Parse an EA from hex (0x- or decimal.
 fn parse_ea(v: &Value) -> Option<u64> {
     if let Some(s) = v.as_str() {
         let s = s.trim();

@@ -33,6 +33,9 @@ jobs:
       # NOTE: the repo vendors idalib/idalib-sys (optional, feature-gated);
       # their build scripts require the proprietary IDA SDK headers which are
       # NOT in the repo. Target our crates explicitly instead of --workspace.
+      - name: Encoding guard (UTF-8, no BOM, no mojibake)
+        run: python -X utf8 scripts/check-encoding.py
+
       - name: Format check
         run: cargo fmt --all -- --check
 

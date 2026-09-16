@@ -9,6 +9,7 @@ use std::io::{self, BufReader, BufWriter, Write};
 
 use rmcp_core::protocol::{FrameReader, PROTOCOL_VERSION, WorkerHello, WorkerRequest, write_frame};
 
+pub mod blockdiff;
 pub mod crypto;
 pub mod deep;
 pub mod deob;

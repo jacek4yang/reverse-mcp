@@ -1,0 +1,34 @@
+# Encoding policy: text is UTF-8 without BOM; LF in the repo, checked out
+# as-is so tooling never rewrites bytes behind our back (the Windows
+# autocrlf round-trip is what mangled em-dashes into mojibake historically).
+* -text
+
+*.rs text diff=rust
+*.md text
+*.toml text
+*.yml text
+*.yaml text
+*.json text
+*.h text
+*.hpp text
+*.cpp text
+*.c text diff=cpp
+*.py text
+*.ps1 text working-tree-encoding=UTF-8
+*.sh text eol=lf
+*.editorconfig text
+*.html text
+*.css text
+
+# Binary assets (never diff/merge as text)
+*.exe binary
+*.dll binary
+*.i64 binary
+*.idb binary
+*.pdb binary
+*.ilk binary
+*.obj binary
+*.bin binary
+*.png binary
+*.jpg binary
+*.zip binary

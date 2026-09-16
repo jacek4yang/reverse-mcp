@@ -1,13 +1,13 @@
 //! #13 function signatures, similarity search and cross-IDB comparison.
 //!
-//! Multi-family fingerprints built on the #14 analysis index 鈥?never a
+//! Multi-family fingerprints built on the #14 analysis index - never a
 //! single hash. Families: call-graph shape (callees/callers counts +
 //! connectivity), import multiset, string multiset, constant multiset,
 //! size. Similarity scores are per-family with explainable evidence, and
 //! strict/relaxed thresholds gate auto-rename confidence.
 //!
 //! The fingerprint index persists as open JSON (`.rsig.json`) next to the
-//! database 鈥?no proprietary content. Cross-IDB mapping produces transfer
+//! database - no proprietary content. Cross-IDB mapping produces transfer
 //! PROPOSALS (names/comments); nothing is applied without an explicit
 //! mutation carrying `expected_revision`.
 
@@ -308,6 +308,12 @@ pub fn identify_function(
 
 fn ea_of(f: &rmcp_core::analysis_index::FunctionFacts) -> u64 {
     f.ea_start
+}
+
+/// Public wrapper for cross-module reuse (#45 block diff exports family
+/// evidence so stripped builds can still be paired by similarity).
+pub fn to_sig_public(ea: u64, f: &rmcp_core::analysis_index::FunctionFacts) -> FunctionSig {
+    to_sig(ea, f)
 }
 
 fn to_sig(ea: u64, f: &rmcp_core::analysis_index::FunctionFacts) -> FunctionSig {

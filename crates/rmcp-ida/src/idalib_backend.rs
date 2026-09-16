@@ -1,7 +1,7 @@
 //! Real IDA backend backed by the vendored `idalib` crate (IDA 9.2 idalib).
 //!
 //! Compiled only with the `idalib` feature. All calls run on the worker's
-//! main thread 鈥?idalib requires every database operation to happen on the
+//! main thread - idalib requires every database operation to happen on the
 //! thread that initialized the library, and worker dispatch is synchronous
 //! on `main`, which satisfies that constraint.
 
