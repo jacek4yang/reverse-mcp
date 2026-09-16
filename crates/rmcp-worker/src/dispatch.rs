@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::crypto;
 use crate::deep;
+use crate::deob;
 use crate::plan;
 use crate::state::WorkerState;
 use crate::types;
@@ -803,6 +804,27 @@ fn dispatch(
             }
             let (idx, _md5) = state.index.as_ref().expect("just built").clone();
             crypto::recover_strings(need_backend(state)?, &idx, target, max)
+        }
+        // ---- #9: deobfuscation (analysis-only pass engine) ----
+        "deob.run" => {
+            let target = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let max_passes = params
+                .get("max_passes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(8)
+                .clamp(1, 16) as u32;
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            deob::deobfuscate(need_backend(state)?, &idx, target, max_passes)
         }
         _ => Err(Error::Worker(format!("unknown method '{method}'"))),
     }

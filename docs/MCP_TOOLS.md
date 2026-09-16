@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-31 tools. Every list/search/graph result is bounded; oversized responses spill
+32 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -273,6 +273,26 @@ strings. Three read-only tasks:
 
 Results are bounded (`max_findings`/`max_strings`, clamped) and cached per
 DB revision via the workflow cache.
+
+### ida_deobfuscate
+Deobfuscation analysis (#9): an analysis-only pass engine over one
+function. Passes (each with name/version, confidence, evidence, proposed
+changes, failure reason, deterministic budget):
+- `flatten_detect` — CFG dispatcher-shape detection (avg in-degree,
+  node/edge counts).
+- `opaque_branch` — constant/self comparisons in ctree plus assembly-level
+  `cmp regX, regX` / `test regX, regX` followed by a conditional jump.
+- `indirect_transfer` — unresolved `jmp reg` / `call reg` sites.
+- `junk_code` — redundant store/load round trips (`mov [mem], reg` /
+  `mov reg, [mem]` pairs on one slot), self-moves, `add 0`.
+- `tail_jump` — `jmp reg` where the register was just assigned (tail-call
+  obfuscation).
+
+SAFETY: analysis-only. No IDB metadata repairs, no byte patches;
+transformations are proposals the agent can apply later through explicit
+mutation tools. `max_passes` (1..16, default 8) bounds the run; a failed
+pass reports its failure reason and leaves the database usable. Regression
+tests assert plain functions do not trigger detectors.
 
 ## Resources (read-only context)
 

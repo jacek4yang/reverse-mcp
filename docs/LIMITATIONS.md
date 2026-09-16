@@ -26,7 +26,7 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 31 tools.
+- MCP stdio transport, 32 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -113,6 +113,16 @@ under "Shipped" does not work yet.
   combination hashing yet); string decode is limited to what ctree
   immediates expose (no full emulator); resolver algorithm inference is
   corpus-verification-based, not decompiler-derived.
+- #9 deobfuscation (real-IDA verified): `ida_deobfuscate` runs an
+  analysis-only pass engine (flattening CFG shape, opaque/redundant
+  branches, indirect transfers, junk no-ops, tail-jumps) with per-pass
+  evidence, bounded confidence and failure reporting. Strictly
+  analysis-only: no IDB metadata repairs and no byte patches — all
+  transformations are proposals; regression tests assert plain functions
+  do not trigger detectors and the DB revision is unchanged by runs.
+  Scope notes: no microcode-level transformation is applied yet (Hex-Rays
+  microcode API passes are future work); unflattening is detection +
+  proposal, not an automatic rewrite.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 

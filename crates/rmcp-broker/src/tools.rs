@@ -859,6 +859,19 @@ pub async fn tool_intel(broker: &Broker, args: Value) -> Result<Value, McpError>
     Ok(json!({"db": db, "intel": out}))
 }
 
+/// ida_deobfuscate - #9 analysis-only deobfuscation pass engine: detects
+/// flattening, opaque branches, indirect transfers, junk and tail-jumps,
+/// proposing (never applying) transformations.
+pub async fn tool_deobfuscate(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let s = session.lock().await;
+    let out = s
+        .call_with_timeout("deob.run", args, std::time::Duration::from_secs(300))
+        .await
+        .map_err(err_from)?;
+    Ok(json!({"db": db, "deob": out}))
+}
+
 /// ida_evidence - #14 structured evidence search over the analysis index.
 /// action=query (default; predicate tree over functions/imports/strings/constants/
 /// calls), build (rebuild + persist), status (index summary). Every hit carries
