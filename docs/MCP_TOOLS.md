@@ -2,7 +2,7 @@
 
 Status: accurate as of the #20 MCP interface redesign (2026-09-15), main branch.
 
-30 tools. Every list/search/graph result is bounded; oversized responses spill
+31 tools. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -249,6 +249,30 @@ discover vtable candidates. Four tasks:
 
 Proposals never apply silently; observed facts, inference and the applied
 mutation are reported separately.
+
+### ida_intel
+Binary intelligence (#12): crypto constants, API-hash resolvers, recovered
+strings. Three read-only tasks:
+- `crypto_scan` — scans all segments for known crypto constants (AES S-box
+  and inverse, SHA-1/SHA-256/MD5 initial states, SHA-256 round constants,
+  CRC-32 reflected table, Blowfish P-array, TEA/XTEA delta — public spec
+  values, no third-party rule files). Findings are ranked by confidence
+  (rarity-weighted) and each carries the containing function and its
+  callers from the analysis index, so one request goes from a constant to
+  usable context.
+- `resolve_api_hashes` — detects likely hash-resolver functions (constant
+  density + size shape from the #14 index) and verifies candidate
+  algorithms (ror13-add, ror13-add-wide, ror15-add, rol7-xor, crc32)
+  against a corpus built from the DB's own import names. Verified
+  constants list the algorithm + API name; single-hash resolvers are
+  flagged low-confidence (0.45) so false positives are visible.
+- `recover_strings` — stack/array string recovery: immediate-store values
+  from a function's ctree assemble into printable runs (>= 4 chars) with
+  per-run source EAs. The IDB is never patched; decoding is reported, not
+  applied.
+
+Results are bounded (`max_findings`/`max_strings`, clamped) and cached per
+DB revision via the workflow cache.
 
 ## Resources (read-only context)
 

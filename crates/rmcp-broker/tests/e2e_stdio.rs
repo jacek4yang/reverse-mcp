@@ -53,7 +53,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 30, "expected 30 tools, got {names:?}");
+    assert_eq!(names.len(), 31, "expected 31 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -74,6 +74,8 @@ async fn e2e_stdio_mock_wired() {
     assert!(names.contains(&"ida_deep".to_string()));
     // #11 type recovery
     assert!(names.contains(&"ida_type_recovery".to_string()));
+    // #12 binary intelligence
+    assert!(names.contains(&"ida_intel".to_string()));
 
     // ida_health: must succeed on an IDA-less machine (CI) and report a
     // structured diagnosis (worker probe + at least discovery shape).

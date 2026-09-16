@@ -129,6 +129,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["evidence", "propose", "vtable", "create_struct"]}, "ea": {"type": "string"}, "functions": {"type": "array", "items": {"type": "string"}, "description": "function EAs to aggregate (propose)"}, "name": {"type": "string", "description": "struct name (create_struct)"}, "fields": {"type": "array", "items": {"type": "string"}, "description": "'offset:size:name:type_decl' quadruples (create_struct)"}, "limit": {"type": "integer"}, "max_entries": {"type": "integer"}}, "required": ["task"]}),
         },
         ToolDef {
+            name: "ida_intel",
+            description: "Binary intelligence (#12): crypto constants, API-hash resolvers, recovered strings. task=crypto_scan: scan all segments for known crypto constants (AES S-box, SHA/MD5 IVs, SHA-256 K, CRC-32 table, Blowfish P-array, TEA delta...); findings ranked by confidence with containing function + callers from the analysis index. task=resolve_api_hashes: detect likely hash-resolver functions and verify candidate algorithms (ror13-add, ror13-add-wide, ror15-add, rol7-xor, crc32) against the DB's own import-name corpus; single-hash resolvers are flagged low-confidence. task=recover_strings: stack/array string recovery from immediate-store analysis of one function; the IDB is never patched. Results are ranked, bounded and searchable.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["crypto_scan", "resolve_api_hashes", "recover_strings"]}, "target": {"type": "string", "description": "function EA (recover_strings)"}, "max_findings": {"type": "integer"}, "max_strings": {"type": "integer"}}, "required": ["task"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -202,6 +207,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_analyze" => tools::tool_analyze(broker, args).await,
         "ida_deep" => tools::tool_deep(broker, args).await,
         "ida_type_recovery" => tools::tool_type_recovery(broker, args).await,
+        "ida_intel" => tools::tool_intel(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,

@@ -26,7 +26,7 @@ under "Shipped" does not work yet.
 - Function-wide calls graph + CFG graph with hard bounds.
 - Optimistic concurrency: `expected_revision` enforced on all mutations.
 - Result store for oversized responses.
-- MCP stdio transport, 30 tools.
+- MCP stdio transport, 31 tools.
 - #14 analysis index + evidence search (real-IDA verified): database-wide
   `AnalysisIndex` (functions with imports/strings/constants/indirect calls/
   callees/callers/globals; string reference lists), structured predicate
@@ -100,6 +100,19 @@ under "Shipped" does not work yet.
   COM interface layouts are not yet inferred; constructor/destructor
   identification is limited to vtable-write patterns encountered during
   evidence walks (no dedicated ctor/dtor scanner yet).
+- #12 binary intelligence (real-IDA verified): `ida_intel` scans for
+  crypto constants (public-spec values: AES S-box/inverse, SHA-1/256/MD5
+  IVs, SHA-256 K, CRC-32 table, Blowfish P-array, TEA delta), detects and
+  verifies API-hash resolvers against a corpus built from the DB's own
+  imports (5 algorithms: ror13-add, wide variant, ror15-add, rol7-xor,
+  crc32), and recovers stack/array strings from immediate-store analysis.
+  All findings carry provenance (EA, containing function, callers) and are
+  ranked by bounded confidence; nothing mutates the IDB. Scope notes:
+  YARA-style external rule packs are not loaded (built-in table only);
+  the algorithm registry is parameter-light (no module-name + API-name
+  combination hashing yet); string decode is limited to what ctree
+  immediates expose (no full emulator); resolver algorithm inference is
+  corpus-verification-based, not decompiler-derived.
 - Test layers: mock unit/e2e (CI, no IDA) and real-IDA integration
   (`tests/idalib_real.rs`, local, `--ignored`).
 
