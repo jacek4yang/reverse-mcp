@@ -1,5 +1,5 @@
 //! Real-IDA integration test (feature `idalib`): drives the REAL production
-//! path 鈥?`reverse-mcp serve`'s WorkerPool spawning `<exe> worker` children 鈥?
+//! path 閳?`reverse-mcp serve`'s WorkerPool spawning `<exe> worker` children 閳?
 //! against a real binary analyzed by IDA 9.2 idalib.
 //!
 //! Chain verified (docs/reverse-mcp-ffi.md item 7):
@@ -528,14 +528,14 @@ async fn real_ida_issue19_func_mutations() {
 
     // Pick a code address that is not inside any function (scan for undefined
     // code past the last function). Use main's tail bytes region: we create a
-    // function at a known code address by first deleting nothing 鈥?instead we
+    // function at a known code address by first deleting nothing 閳?instead we
     // grab the address of an instruction INSIDE main (offset +2) which belongs
     // to no function start, and create a function there? add_func on a
     // mid-function address fails; so use a fresh path: find undefined bytes.
     // Simplest deterministic approach: create at main's entry + main size
     // boundary is risky. Instead, locate any "sub_" region via the analyzer:
     // use an address right after main's end where padding/thunk code may sit.
-    // Robust choice: pick the entry thunk of an import (data) 鈥?no. We use
+    // Robust choice: pick the entry thunk of an import (data) 閳?no. We use
     // `functions` list: choose the LAST function's end; alignment padding
     // follows. If creation fails there, the API must return a clean error.
     let fns = s
@@ -827,7 +827,7 @@ async fn real_ida_issue14_evidence_index() {
     let built = s.call("index.build", json!({})).await.expect("index.build");
     assert!(built["functions"].as_u64().unwrap() > 0, "build: {built}");
 
-    // Query 1: strings predicate 鈥?the fixture has "usage: simple".
+    // Query 1: strings predicate 閳?the fixture has "usage: simple".
     let hits = s
         .call(
             "index.query",
@@ -857,7 +857,7 @@ async fn real_ida_issue14_evidence_index() {
         .expect("name query");
     assert!(hits2["count"].as_u64().unwrap() >= 1, "hits2: {hits2}");
 
-    // Query 3: import predicate 鈥?simple.exe imports from the CRT; search a
+    // Query 3: import predicate 閳?simple.exe imports from the CRT; search a
     // common import substring. Even zero hits must be a bounded response.
     let hits3 = s
         .call(
@@ -1389,7 +1389,7 @@ async fn real_ida_issue12_binary_intel() {
     // at runtime and compares; those constants appear in api_dispatch.
     // Detection requires constants in the index: verify at least one
     // resolver-shaped finding if the compiler kept the constants inline.
-    // (If MSVC folded them, the scan legitimately reports nothing — assert
+    // (If MSVC folded them, the scan legitimately reports nothing 鈥?assert
     // the response is well-formed in that case.)
     for f in hfindings {
         assert!(
@@ -1438,6 +1438,139 @@ async fn real_ida_issue12_binary_intel() {
         scan2["findings"].as_array().map(|a| a.len()),
         scan["findings"].as_array().map(|a| a.len()),
         "repeat scan must be deterministic"
+    );
+
+    s.call("db.close", json!({})).await.expect("close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}
+
+/// #9 deobfuscation: analysis-only pass engine over an obfuscated fixture
+/// (junk no-ops, opaque/self-comparison branches, flattening-shaped CFG,
+/// indirect call). Verifies: passes run within budget, findings are
+/// bounded and machine-readable, junk+opaque passes trigger on the fixture
+/// and stay quiet on a plain function (regression), and NO IDB mutation
+/// occurs (revision unchanged).
+#[tokio::test]
+#[ignore]
+async fn real_ida_issue9_deobfuscation() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/obfuscated.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-9.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let fresh_i64 = std::path::PathBuf::from(format!("{}.i64", dst.display()));
+    let _ = std::fs::remove_file(&fresh_i64);
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let find_all9 = |name: &str| -> Vec<u64> {
+        fns.as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| f["name"].as_str().map(|n| n.contains(name)) == Some(true))
+            .filter_map(|f| f["ea_start"].as_u64())
+            .collect()
+    };
+    let rev_before = s.call("revision", json!({})).await.expect("revision");
+
+    // --- junk + opaque detection on the obfuscated functions (thunk-safe:
+    // MSVC emits wrapper thunks, so try every candidate) ---
+    let mut junk_hits = 0usize;
+    let mut last_report = serde_json::Value::Null;
+    let mut opaque_reports: Vec<serde_json::Value> = Vec::new();
+    let mut opaque_hits = 0usize;
+    for name in ["junk_calc", "opaque_check"] {
+        let mut best_junk = 0usize;
+        let mut best_opaque = 0usize;
+        for ea in find_all9(name) {
+            let out = s
+                .call(
+                    "deob.run",
+                    json!({"target": format!("{ea:#x}"), "max_passes": 8}),
+                )
+                .await
+                .expect("deob.run");
+            last_report = out.clone();
+            if name == "opaque_check" {
+                opaque_reports.push(out.clone());
+            }
+            let findings = out["findings"].as_array().expect("findings array");
+            assert_eq!(out["mode"], "analysis_only", "safety: {out}");
+            assert!(findings.len() >= 3, "passes ran: {out}");
+            for p in findings {
+                assert!(p["pass"].as_str().is_some(), "pass name: {p}");
+                assert!(p["confidence"].as_str().is_some(), "confidence: {p}");
+            }
+            if name == "junk_calc" {
+                best_junk = best_junk.max(
+                    findings
+                        .iter()
+                        .filter(|p| p["pass"] == "junk_code" && p["confidence"] != "0.05")
+                        .count(),
+                );
+            }
+            if name == "opaque_check" {
+                best_opaque = best_opaque.max(
+                    findings
+                        .iter()
+                        .filter(|p| p["pass"] == "opaque_branch" && p["confidence"] != "0.05")
+                        .count(),
+                );
+            }
+        }
+        junk_hits = junk_hits.max(best_junk);
+        opaque_hits = opaque_hits.max(best_opaque);
+    }
+    assert!(
+        junk_hits >= 1,
+        "junk pass must trigger on junk_calc: {}",
+        serde_json::to_string(&last_report).unwrap_or_default()
+    );
+    assert!(
+        opaque_hits >= 1,
+        "opaque pass must trigger on opaque_check: {}",
+        serde_json::to_string(&opaque_reports).unwrap_or_default()
+    );
+
+    // --- regression: plain function must NOT trigger junk/opaque ---
+    // main is plain; its passes should stay at base confidence.
+    if let Some(main_ea) = find_all9("main").first().copied() {
+        let out = s
+            .call("deob.run", json!({"target": format!("{main_ea:#x}")}))
+            .await
+            .expect("deob.run main");
+        let findings = out["findings"].as_array().expect("findings");
+        let triggered = findings
+            .iter()
+            .filter(|p| {
+                let c: f64 = p["confidence"]
+                    .as_str()
+                    .unwrap_or("0")
+                    .parse()
+                    .unwrap_or(0.0);
+                c >= 0.6
+            })
+            .count();
+        // A plain printf-calling main should not trip multiple detectors.
+        assert!(
+            triggered <= 1,
+            "plain main must not trip detectors: {}",
+            serde_json::to_string(&out["findings"]).unwrap_or_default()
+        );
+    }
+
+    // --- safety: no IDB mutation from deob runs ---
+    let rev_after = s.call("revision", json!({})).await.expect("revision");
+    assert_eq!(
+        rev_before, rev_after,
+        "deobfuscation analysis must not mutate the IDB"
     );
 
     s.call("db.close", json!({})).await.expect("close");

@@ -11,6 +11,7 @@ use rmcp_core::protocol::{FrameReader, PROTOCOL_VERSION, WorkerHello, WorkerRequ
 
 pub mod crypto;
 pub mod deep;
+pub mod deob;
 pub mod dispatch;
 pub mod plan;
 pub mod state;

@@ -134,6 +134,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["crypto_scan", "resolve_api_hashes", "recover_strings"]}, "target": {"type": "string", "description": "function EA (recover_strings)"}, "max_findings": {"type": "integer"}, "max_strings": {"type": "integer"}}, "required": ["task"]}),
         },
         ToolDef {
+            name: "ida_deobfuscate",
+            description: "Deobfuscation analysis (#9): analysis-only pass engine over one function. Detects control-flow flattening (CFG dispatcher shape), opaque/redundant branches (constant/self comparisons in ctree), indirect transfers (jmp/call reg), junk no-ops (mov reg,reg / add 0), and return-as-jump tail transfers. Every pass reports name/version, confidence, evidence, proposed changes and failure reason; max_passes bounds the run. SAFETY: analysis-only - no IDB metadata repairs, no byte patches; transformations are proposals an agent can apply via explicit ida_mutation actions afterward.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "target": {"type": "string", "description": "function EA"}, "max_passes": {"type": "integer", "maximum": 16}}, "required": ["target"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -208,6 +213,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_deep" => tools::tool_deep(broker, args).await,
         "ida_type_recovery" => tools::tool_type_recovery(broker, args).await,
         "ida_intel" => tools::tool_intel(broker, args).await,
+        "ida_deobfuscate" => tools::tool_deobfuscate(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,
