@@ -898,17 +898,70 @@ pub async fn tool_intel(broker: &Broker, args: Value) -> Result<Value, McpError>
     Ok(json!({"db": db, "intel": out}))
 }
 
-/// ida_deobfuscate - #9 analysis-only deobfuscation pass engine: detects
-/// flattening, opaque branches, indirect transfers, junk and tail-jumps,
-/// proposing (never applying) transformations.
+/// ida_deobfuscate - #9 analysis-only pass engine (task=analyze, default)
+/// plus #46 explicit transforms: task=propose (analysis-only plan with
+/// evidence), task=validate (rejections, never mutates), task=apply
+/// (snapshot + whole-plan revision guard + audited patch via plan.apply),
+/// task=rollback (restore last snapshot, itself audited).
 pub async fn tool_deobfuscate(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
-    let out = s
-        .call_with_timeout("deob.run", args, std::time::Duration::from_secs(300))
-        .await
-        .map_err(err_from)?;
-    Ok(json!({"db": db, "deob": out}))
+    let task = arg_str(&args, "task").unwrap_or("analyze").to_string();
+    match task.as_str() {
+        "analyze" => {
+            let out = s
+                .call_with_timeout("deob.run", args, std::time::Duration::from_secs(300))
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "deob": out}))
+        }
+        "propose" => {
+            let out = s
+                .call_with_timeout("deob.propose", args, std::time::Duration::from_secs(300))
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "deob": out}))
+        }
+        "validate" => {
+            let plan = args
+                .get("plan")
+                .cloned()
+                .ok_or_else(|| mcp_code("invalid_args", "validate requires 'plan'"))?;
+            let out = s
+                .call("deob.validate", json!({"plan": plan}))
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "deob": out}))
+        }
+        "apply" => {
+            let plan = args
+                .get("plan")
+                .cloned()
+                .ok_or_else(|| mcp_code("invalid_args", "apply requires 'plan'"))?;
+            let out = s
+                .call_with_timeout(
+                    "deob.apply",
+                    json!({"plan": plan, "expected_revision": args.get("expected_revision")}),
+                    std::time::Duration::from_secs(300),
+                )
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "deob": out}))
+        }
+        "rollback" => {
+            let out = s
+                .call("snapshot.restore", json!({}))
+                .await
+                .map_err(err_from)?;
+            Ok(json!({"db": db, "deob": out}))
+        }
+        other => Err(mcp_code(
+            "invalid_args",
+            &format!(
+                "unknown deobfuscate task '{other}' (analyze|propose|validate|apply|rollback)"
+            ),
+        )),
+    }
 }
 
 /// ida_sig - #13 signatures/similarity/cross-IDB mapping. identify/map

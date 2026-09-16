@@ -215,6 +215,47 @@ async fn e2e_stdio_mock_wired() {
         "identical repeat on unchanged revision must hit the cache: {text}"
     );
 
+    // #46: transform round trip: propose -> validate -> apply -> rollback.
+    // The mock graph carries no junk roundtrips, so propose returns an
+    // empty-but-wellformed plan; apply of a synthetic validated plan is
+    // covered in the worker tests. Here we drive the full MCP shape.
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_deobfuscate").with_arguments(
+                json!({"db": handle, "task": "propose", "target": "0x401200", "kind": "T2_junk_removal"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("deob propose");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"kind\": \"T2_junk_removal\"") && text.contains("\"operations\""),
+        "propose response: {text}"
+    );
+
+    // validate a synthetic in-function plan: mock has bytes at 0x401000.
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_deobfuscate").with_arguments(
+                json!({"db": handle, "task": "validate",
+                       "plan": {"kind": "T2_junk_removal", "target": "0x401000",
+                                "operations": [{"kind": "patch_bytes", "ea": "0x401000", "hex": "9090"}]}})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("deob validate");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"valid\""),
+        "validate response must carry a valid flag: {text}"
+    );
+
     // edit (rename) then verify revision
     let resp = client
         .call_tool(

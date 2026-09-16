@@ -19,6 +19,8 @@ pub struct MockBackend {
     comments: std::collections::BTreeMap<(u64, bool), String>,
     bytes: std::collections::BTreeMap<u64, Vec<u8>>,
     decompile_off: bool,
+    /// Extra xrefs injected by tests (from, to, kind).
+    extra_xrefs: Vec<(u64, u64, String)>,
     /// Snapshot stack (#16): each entry clones the mutable state at
     /// snapshot time so `snapshot_restore` can roll back.
     snapshots: Vec<SnapshotState>,
@@ -58,8 +60,15 @@ impl MockBackend {
             comments: std::collections::BTreeMap::new(),
             bytes,
             decompile_off: false,
+            extra_xrefs: Vec::new(),
             snapshots: Vec::new(),
         }
+    }
+
+    /// Test hook: inject an xref so adversarial paths can be driven
+    /// deterministically (used by the transform-validate tests).
+    pub fn add_xref_for_test(&mut self, from: u64, to: u64, kind: &str) {
+        self.extra_xrefs.push((from, to, kind.to_string()));
     }
 
     /// Disable decompile capability to test `capability_unavailable` paths.
@@ -207,7 +216,16 @@ impl IdaBackend for MockBackend {
     fn xrefs_to(&self, ea: u64) -> Result<Vec<XrefInfo>> {
         self.require_open()?;
         // main calls helper and decrypt_packet in the fixture.
-        let mut out = Vec::new();
+        let mut out: Vec<XrefInfo> = self
+            .extra_xrefs
+            .iter()
+            .filter(|(_, to, _)| *to == ea)
+            .map(|(from, to, kind)| XrefInfo {
+                from: *from,
+                to: *to,
+                kind: kind.clone(),
+            })
+            .collect();
         if ea == 0x401100 {
             out.push(XrefInfo {
                 from: 0x401020,

@@ -1930,3 +1930,104 @@ async fn real_ida_issue44_value_propagation() {
     drop(s);
     pool.close(&handle).await.expect("close");
 }
+
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue46_transform_apply_rollback() {
+    // Fixture: obfuscated.exe from #9 (junk roundtrips at /Od /Zi).
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/obfuscated.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-issue46.exe");
+    let _ = std::fs::remove_file(format!("{}.i64", dst.display()));
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    s.call("analyze_wait", json!({})).await.expect("analyze");
+
+    // Resolve the junky function by name (thunk-safe: try every candidate).
+    let fns = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions");
+    let target: u64 = fns
+        .as_array()
+        .expect("functions array")
+        .iter()
+        .find(|f| f["name"].as_str() == Some("junk_calc"))
+        .and_then(|f| f["ea_start"].as_u64())
+        .expect("junk_calc fn");
+
+    // 1. propose: T2 plan from live analysis evidence.
+    let out = s
+        .call(
+            "deob.propose",
+            json!({"target": format!("{target:#x}"), "kind": "T2_junk_removal"}),
+        )
+        .await
+        .expect("propose");
+    let ops = out["operations"].as_array().expect("operations").len();
+    assert!(ops > 0, "obfuscated fixture must yield T2 sites: {out}");
+
+    // 2. validate: live DB re-check must pass (no xrefs into junk here).
+    let v = s
+        .call("deob.validate", json!({"plan": out}))
+        .await
+        .expect("validate");
+    assert_eq!(v["valid"], true, "clean junk sites must validate: {v}");
+
+    // 3. apply: snapshot -> revision-guarded patch -> before/after.
+    let rev_before = s.call("revision", json!({})).await.expect("revision");
+    let rev_before = rev_before["revision"].as_u64().expect("rev");
+    let applied = s
+        .call(
+            "deob.apply",
+            json!({"plan": out, "expected_revision": rev_before}),
+        )
+        .await
+        .expect("apply");
+    assert_eq!(applied["applied"]["partial"], false, "apply: {applied}");
+    assert!(
+        applied["before"].is_object() && applied["after"].is_object(),
+        "before/after evidence required: {applied}"
+    );
+
+    // 4. revision conflict: stale expected_revision must reject cleanly.
+    let conflict = s
+        .call(
+            "deob.apply",
+            json!({"plan": out, "expected_revision": rev_before}),
+        )
+        .await;
+    assert!(conflict.is_err(), "stale revision must be rejected");
+
+    // 5. rollback: snapshot restore brings the bytes back (audited).
+    let rolled = s
+        .call("snapshot.restore", json!({}))
+        .await
+        .expect("rollback");
+    assert_eq!(rolled["restored"], true, "rollback: {rolled}");
+
+    // 6. after rollback the same plan validates and applies again.
+    let rev2 = s.call("revision", json!({})).await.expect("rev2");
+    let rev2 = rev2["revision"].as_u64().expect("rev2");
+    let v2 = s
+        .call("deob.validate", json!({"plan": out}))
+        .await
+        .expect("validate2");
+    assert_eq!(v2["valid"], true, "post-rollback re-validate: {v2}");
+    let _ = s
+        .call(
+            "deob.apply",
+            json!({"plan": out, "expected_revision": rev2}),
+        )
+        .await
+        .expect("re-apply");
+
+    s.call("db.close", json!({})).await.expect("db.close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}
