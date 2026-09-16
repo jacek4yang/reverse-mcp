@@ -24,7 +24,12 @@ BAD_CHARS = {
     0x9497: "U+9497 (GBK-mangled UTF-8 fragment)",
     0x00C2: "U+00C2 (cp1252-mangled UTF-8 lead)",
 }
-BAD_SUBSTR = ("Ã¢â‚¬", "鈥?", "锟斤拷", "å¥½")
+BAD_SUBSTR = (
+    chr(0xC3) + chr(0xA2) + chr(0xE2) + chr(0x20AC) + chr(0x201A),
+    chr(0x9225) + chr(0x3F),
+    chr(0x951F) + chr(0x65A4) + chr(0x62F7),
+    chr(0x00E5) + chr(0x00A5) + chr(0x00BD),
+)
 
 
 def tracked_files():
