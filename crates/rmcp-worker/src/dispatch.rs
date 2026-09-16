@@ -13,6 +13,7 @@ use crate::plan;
 use crate::signatures;
 use crate::state::WorkerState;
 use crate::types;
+use crate::valuean;
 use crate::workflow;
 
 fn need_backend(state: &mut WorkerState) -> rmcp_core::error::Result<&mut (dyn IdaBackend + '_)> {
@@ -675,6 +676,44 @@ fn dispatch(
             }))
         }
         // ---- #43: microcode (analysis-only generation + bounded dump).
+        // ---- #44: value analysis (bounded constant/value propagation +
+        // indirect-call target proposals). Revision-keyed cache like deep:
+        // identical requests on an unchanged DB are free; mutations
+        // invalidate via the revision bump.
+        "value.propagate" => {
+            let target = ea_param(&params, "target").or_else(|_| ea_param(&params, "ea"))?;
+            let budgets = deep::budgets_from(&params);
+            let current_rev = need_backend(state)?.revision();
+            let stale = state
+                .index
+                .as_ref()
+                .map(|(idx, _)| idx.revision != current_rev)
+                .unwrap_or(true);
+            if stale {
+                let (idx, md5) = need_backend(state)?.build_index()?;
+                state.index = Some((idx, md5));
+            }
+            let key = (
+                "value_propagate".to_string(),
+                format!("{target:#x}|{budgets:?}"),
+                current_rev,
+            );
+            if let Some(cached) = state.workflow_cache.get(&key) {
+                return Ok(json!({
+                    "cached": true,
+                    "cache_hits": state.workflow_cache.hits,
+                    "result": cached,
+                }));
+            }
+            let (idx, _md5) = state.index.as_ref().expect("just built").clone();
+            let result = valuean::value_analysis(need_backend(state)?, &idx, target, &budgets)?;
+            state.workflow_cache.put(key, result.clone());
+            Ok(json!({
+                "cached": false,
+                "cache_hits": state.workflow_cache.hits,
+                "result": result,
+            }))
+        }
         // Revision-keyed cache: identical dumps on an unchanged DB are free;
         // any mutation invalidates them via the revision bump.
         "hr.microcode" => {

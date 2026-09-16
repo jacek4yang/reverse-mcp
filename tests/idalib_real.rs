@@ -1828,3 +1828,105 @@ async fn real_ida_issue43_microcode() {
     drop(s);
     pool.close(&handle).await.expect("close");
 }
+
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue44_value_propagation() {
+    // Fixture: deep.exe 3-level call chain (sub chain with constant args at
+    // /Od /Zi, plus one indirect call site from the earlier deep tests).
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/deep.exe");
+    let dst = std::env::temp_dir().join("reverse-mcp-it-issue44.exe");
+    std::fs::copy(&src, &dst).expect("copy fixture");
+    let dst = dst.to_string_lossy().into_owned();
+
+    let mut pool = pool_with_ida_on_path();
+    let handle = open_idalib(&mut pool, &dst).await;
+    let session = pool.session(&handle).await.expect("session");
+    let s = session.lock().await;
+
+    s.call("analyze_wait", json!({})).await.expect("analyze");
+
+    // Locate the chain root by name (thunk-safe: take every candidate).
+    let funcs = s
+        .call("functions", json!({"offset": 0, "limit": 6000}))
+        .await
+        .expect("functions list");
+    let root: u64 = funcs
+        .as_array()
+        .expect("functions array")
+        .iter()
+        .find(|f| f["name"].as_str() == Some("process"))
+        .and_then(|f| f["ea_start"].as_u64())
+        .expect("process must exist in deep.exe");
+    assert!(root != 0);
+
+    // 1. Full pass over the root: rows must be evidence-shaped and bounded.
+    let out = s
+        .call(
+            "value.propagate",
+            json!({"ea": format!("{root:#x}"), "depth": 2, "max_functions": 8, "max_calls": 32}),
+        )
+        .await
+        .expect("value.propagate");
+    assert_eq!(out["cached"], false);
+    let result = &out["result"];
+    assert_eq!(result["truncated"], false, "tiny fixture must not truncate");
+    let targets = result["targets"].as_array().expect("targets array");
+    let indirect = result["indirect"].as_array().expect("indirect array");
+    for row in targets {
+        assert!(
+            row["confidence"].as_str().is_some(),
+            "every target row needs a confidence: {row}"
+        );
+        assert!(
+            row["at"].as_array().is_some(),
+            "every target row needs provenance EAs: {row}"
+        );
+    }
+    for row in indirect {
+        assert!(
+            row["call_ea"].as_str().is_some(),
+            "indirect rows need a call-site EA: {row}"
+        );
+    }
+
+    // 2. Cache: identical repeat is free.
+    let out2 = s
+        .call(
+            "value.propagate",
+            json!({"ea": format!("{root:#x}"), "depth": 2, "max_functions": 8, "max_calls": 32}),
+        )
+        .await
+        .expect("repeat");
+    assert_eq!(out2["cached"], true, "identical repeat must hit the cache");
+
+    // 3. Depth-1 run on a leaf function must stay intra-procedural.
+    let leaf: u64 = {
+        let funcs2 = s
+            .call("functions", json!({"offset": 0, "limit": 6000}))
+            .await
+            .expect("funcs");
+        funcs2
+            .as_array()
+            .expect("functions array")
+            .iter()
+            .filter_map(|f| {
+                let ea = f["ea_start"].as_u64().unwrap_or(0);
+                (ea != 0 && ea != root).then_some(ea)
+            })
+            .next()
+            .expect("a second function")
+    };
+    let out3 = s
+        .call(
+            "value.propagate",
+            json!({"ea": format!("{leaf:#x}"), "depth": 1}),
+        )
+        .await
+        .expect("leaf pass");
+    assert_eq!(out3["result"]["depth_used"], 1);
+
+    s.call("db.close", json!({})).await.expect("db.close");
+    drop(s);
+    pool.close(&handle).await.expect("close");
+}

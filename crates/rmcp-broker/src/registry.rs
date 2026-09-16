@@ -179,6 +179,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["cfunc", "microcode", "lvar_rename"]}, "ea": {"type": "string"}, "var_defea": {"type": "string"}, "name": {"type": "string"}, "include_ctree": {"type": "boolean"}, "include_lvars": {"type": "boolean"}, "limit": {"type": "integer", "maximum": 50000}, "maturity": {"type": "integer", "maximum": 7}, "max_insns": {"type": "integer", "maximum": 20000}, "expected_revision": {"type": "integer"}}, "required": ["action", "ea"]}),
         },
         ToolDef {
+            name: "ida_value",
+            description: "Bounded constant/value propagation and indirect-call target proposals (analysis-only): walks the target function plus optional k-hop callees once each (reuses the deep single-decompile cache), merges constant argument evidence per (function, argN) with confidence confirmed/set/heuristic, and probes unresolved indirect call sites against vtable slots. Budget keys: depth (default 1 = intra-procedural only), max_functions, max_calls, timeout_ms; cached per revision.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "ea": {"type": "string", "description": "target function EA"}, "depth": {"type": "integer", "minimum": 1, "maximum": 16}, "max_functions": {"type": "integer", "maximum": 4096}, "max_calls": {"type": "integer", "maximum": 100000}, "max_iterations": {"type": "integer", "maximum": 100000}, "timeout_ms": {"type": "integer", "maximum": 1800000}, "resume_from": {"type": "string"}}, "required": ["ea"]}),
+        },
+        ToolDef {
             name: "ida_insn",
             description: "Instruction-level metadata: action=features (canon CF_* feature bits + mnemonic at ea) or demangle (name -> demangled form).",
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["features", "demangle"]}, "ea": {"type": "string"}, "name": {"type": "string"}}, "required": ["action"]}),
@@ -231,6 +236,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_filemap" => tools::tool_filemap(broker, args).await,
         "ida_func" => tools::tool_func(broker, args).await,
         "ida_hr" => tools::tool_hr(broker, args).await,
+        "ida_value" => tools::tool_value(broker, args).await,
         "ida_insn" => tools::tool_insn(broker, args).await,
         "ida_mutation" => tools::tool_mutation(broker, args).await,
         other => Err(rmcp::ErrorData::invalid_params(

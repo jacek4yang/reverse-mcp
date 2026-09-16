@@ -42,7 +42,8 @@ pub struct DeepBudgets {
 }
 
 impl DeepBudgets {
-    fn time_left(&self) -> bool {
+    /// True while the wall-clock budget (if any) has not expired.
+    pub(crate) fn time_left(&self) -> bool {
         self.deadline
             .map(|d| std::time::Instant::now() < d)
             .unwrap_or(true)

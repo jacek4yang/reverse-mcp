@@ -675,6 +675,31 @@ pub async fn tool_hr(broker: &Broker, args: Value) -> Result<Value, McpError> {
 
 /// ida_insn 鈥?instruction metadata: canon feature bits + mnemonic
 /// (issue #19 `insn.features`), plus name demangling (`names.demangle`).
+/// ida_value - bounded constant/value propagation + indirect-call target
+/// proposals (issue #44 `value.propagate`), agent-budgeted and cached.
+pub async fn tool_value(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
+    let ea = args
+        .get("ea")
+        .and_then(parse_ea)
+        .ok_or_else(|| mcp_code("invalid_args", "value requires 'ea'"))?;
+    let s = session.lock().await;
+    let mut params = json!({"ea": ea});
+    for key in [
+        "depth",
+        "max_functions",
+        "max_calls",
+        "max_iterations",
+        "timeout_ms",
+    ] {
+        if let Some(v) = args.get(key).and_then(|v| v.as_u64()) {
+            params[key] = json!(v);
+        }
+    }
+    let out = s.call("value.propagate", params).await.map_err(err_from)?;
+    Ok(json!({"db": db, "value": bound_output(broker, "ida_value", out)}))
+}
+
 pub async fn tool_insn(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
     let s = session.lock().await;
@@ -1061,6 +1086,7 @@ async fn run_named(broker: &Broker, tool: &str, args: Value) -> Result<Value, Mc
         "ida_filemap" => tool_filemap(broker, args).await,
         "ida_func" => tool_func(broker, args).await,
         "ida_hr" => tool_hr(broker, args).await,
+        "ida_value" => tool_value(broker, args).await,
         "ida_insn" => tool_insn(broker, args).await,
         other => Err(mcp_code(
             "invalid_args",

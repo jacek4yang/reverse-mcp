@@ -28,7 +28,7 @@ fn tool_count_matches_registry() {
 
     // e2e test pins the exact count; keep this in sync with it.
     assert_eq!(
-        count, 33,
+        count, 34,
         "registry tool count changed; update docs + e2e_stdio.rs"
     );
     // README must not claim a wrong count.
