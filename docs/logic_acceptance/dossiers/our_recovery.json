@@ -1,0 +1,35 @@
+{
+  "deep": {
+    "completed": 3,
+    "failures": 0,
+    "global_budget_exhausted_with_frontier": 0
+  },
+  "evidence": {
+    "crypto": {
+      "ok": true
+    },
+    "imports": {
+      "count": 145,
+      "ok": true
+    },
+    "indirect_calls_query": {
+      "ok": true
+    },
+    "strings_search": {
+      "ok": true
+    }
+  },
+  "function_count": 1000,
+  "ground_truth": {
+    "imports_hit": 6,
+    "imports_total": 7,
+    "note": "workspace-source facts; scored after analysis, excluded /O2-removed edges",
+    "strings_hit": 0,
+    "strings_total": 2
+  },
+  "imports_recovered": 145,
+  "label": "our_recovery",
+  "open": true,
+  "path_sha": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\recovery-5f66410496fde45d.exe",
+  "wall_secs": 20
+}

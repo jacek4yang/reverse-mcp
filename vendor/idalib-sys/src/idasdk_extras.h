@@ -52,8 +52,11 @@ inline size_t idalib_enum_import_names(int mod_index,
                                        rust::Vec<rust::String> &names,
                                        rust::Vec<uint64_t> &ords) {
   ImportCollector collected;
+  // IDA SDK: enum_import_names returns the NUMBER of imports found (>=0) on
+  // success and a negative value on failure (e.g. bad module index). The
+  // count is not an error - a successful enumeration must be forwarded.
   int rc = enum_import_names(mod_index, idalib_import_enum_cb, &collected);
-  if (rc != 0) {
+  if (rc < 0) {
     return 0;
   }
   for (size_t i = 0; i < collected.eas.size(); ++i) {
