@@ -43,3 +43,19 @@ tests/fixtures/ctf_rust.pdb
 tests/fixtures/*.ilk
 tests/fixtures/*.obj
 tests/fixtures/*.pdb
+
+# Secrets and credentials — never commit any key material
+*.key
+*.pem
+*.authkey
+secrets/
+.reverse-mcp-secrets/
+# researcher-local provisioning helper (references the secret's location)
+scripts/mb_fetch.py
+
+# Tier-B local malware corpus (issue #64) — samples, manifests, dossiers
+# and reports are researcher-local only; never enter Git.
+corpus_local/
+docs/malware_acceptance/dossiers/
+docs/malware_acceptance/report.json
+docs/malware_acceptance/manifest.local.json
