@@ -17,6 +17,9 @@ pub struct Config {
     pub result_threshold: usize,
     /// Result-store TTL.
     pub result_ttl: Duration,
+    /// Result-store hard cap (entries). Oldest entries are evicted first;
+    /// 0 = unlimited. Default bounds worst-case broker memory for soak runs.
+    pub result_max_entries: usize,
     /// Path to config file that was loaded, if any.
     pub config_path: Option<PathBuf>,
 }
@@ -29,6 +32,7 @@ impl Default for Config {
             max_workers: 8,
             result_threshold: 24 * 1024,
             result_ttl: Duration::from_secs(3600),
+            result_max_entries: 256,
             config_path: None,
         }
     }
@@ -45,6 +49,8 @@ struct FileConfig {
     result_threshold_kib: Option<usize>,
     /// Seconds
     result_ttl_secs: Option<u64>,
+    /// Hard entry cap for the result store (0 = unlimited).
+    result_max_entries: Option<usize>,
 }
 
 impl Config {
@@ -66,6 +72,7 @@ impl Config {
             max_workers: file.max_workers.unwrap_or(8).max(1),
             result_threshold: file.result_threshold_kib.unwrap_or(24) * 1024,
             result_ttl: Duration::from_secs(file.result_ttl_secs.unwrap_or(3600)),
+            result_max_entries: file.result_max_entries.unwrap_or(256),
             config_path: Some(path),
         })
     }

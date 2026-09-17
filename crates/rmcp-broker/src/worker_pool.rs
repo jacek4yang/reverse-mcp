@@ -363,17 +363,33 @@ impl WorkerPool {
             .take()
             .ok_or_else(|| Error::Worker("no worker stdout".into()))?;
 
-        // Read the hello frame.
+        // Read the hello frame, bounded: a worker that hangs during startup
+        // (e.g. IDA plugin init blocking) must fail the open deterministically
+        // instead of wedging the broker forever (#57 soak requirement).
         let mut reader = AsyncFrameReader::new(tokio::io::BufReader::new(stdout));
-        let hello: WorkerHello = match reader.read().await? {
-            Some(h) => h,
-            None => {
+        let hello: WorkerHello = match tokio::time::timeout(
+            Duration::from_secs(120),
+            reader.read::<WorkerHello>(),
+        )
+        .await
+        {
+            Ok(Ok(Some(h))) => h,
+            Ok(Ok(None)) => {
                 // The worker died before the protocol even started. The
                 // classic cause is the IDA runtime DLLs not being resolvable
                 // (Windows loader status 0xC0000135 = STATUS_DLL_NOT_FOUND);
                 // give the agent an actionable, stable-coded diagnostic
                 // instead of a bare exit code.
                 return Err(Self::diagnose_dead_worker(ida_dir.as_deref()));
+            }
+            Ok(Err(e)) => {
+                return Err(Error::Worker(format!("worker hello frame: {e}")));
+            }
+            Err(_) => {
+                let _ = child.kill().await;
+                return Err(Error::Worker(
+                    "worker did not send its hello frame within 120s (startup hung); killed".into(),
+                ));
             }
         };
         if hello.protocol != PROTOCOL_VERSION {

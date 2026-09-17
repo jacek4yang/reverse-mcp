@@ -2,7 +2,7 @@
 
 Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
-34 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
+35 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -31,6 +31,19 @@ Per-DB capability report: `decompile` (hexrays present), `types` (false today),
 ### ida_installations
 All IDA installs discovered on the machine: version, root, source, decompilers,
 backend readiness. Use with `ida_db open ida_version`.
+
+### ida_jobs
+Background analysis jobs (#57 agent autonomy). `action=start` parks a
+worker call (`method` + `params`, analysis methods only - mutations stay
+synchronous) with the agent's own `timeout_ms` budget (5s..30min, default
+600s) and returns a `job` id immediately; the agent keeps working on other
+DBs/tasks and collects later - **nothing is lost** on client disconnects
+or timeouts (results include deep-analysis partial output and resume
+tokens). `action=status` shows bounded progress; `action=result` returns
+the full stored outcome (repeatable until TTL); `action=list` shows the
+queue; `action=cancel` discards a job (the in-flight worker frame cannot
+be interrupted). Bounded by construction: max 4 concurrent jobs, finished
+results TTL'd and swept by the broker janitor, no extra worker processes.
 
 ### ida_health
 Self-diagnosis that works even when no IDA install is found: discovery results

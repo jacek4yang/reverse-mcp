@@ -53,7 +53,7 @@ async fn e2e_stdio_mock_wired() {
         .await
         .expect("list_tools");
     let names: Vec<String> = tools.tools.iter().map(|t| t.name.to_string()).collect();
-    assert_eq!(names.len(), 34, "expected 34 tools, got {names:?}");
+    assert_eq!(names.len(), 35, "expected 35 tools, got {names:?}");
     assert!(names.contains(&"ida_decompile".to_string()));
     assert!(names.contains(&"ida_result".to_string()));
     assert!(names.contains(&"ida_segments".to_string()));
@@ -254,6 +254,107 @@ async fn e2e_stdio_mock_wired() {
     assert!(
         text.contains("\"valid\""),
         "validate response must carry a valid flag: {text}"
+    );
+
+    // #57: background jobs - start a slow analysis, keep working, collect.
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_jobs").with_arguments(
+                json!({"action": "start", "db": handle, "method": "deob.propose",
+                       "params": {"target": "0x401000", "kind": "T2_junk_removal"}})
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("ida_jobs start");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"job\"") && text.contains("\"status\": \"running\"")
+            || text.contains("\"running\""),
+        "job start response: {text}"
+    );
+    // Extract the job id from the response text.
+    let job_id: String = {
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap_or(json!({}));
+        v["job"].as_str().unwrap_or_default().to_string()
+    };
+    assert!(!job_id.is_empty(), "job id must be returned: {text}");
+
+    // The agent does other work here (already interleaved in this test).
+    // Poll status until done (mock backend: near-instant).
+    let mut done = false;
+    for _ in 0..40 {
+        let resp = client
+            .call_tool(
+                CallToolRequestParams::new("ida_jobs").with_arguments(
+                    json!({"action": "status", "job": job_id})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .expect("ida_jobs status");
+        let text = first_text(&resp);
+        if text.contains("\"status\": \"done\"") {
+            done = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(done, "job must finish");
+
+    // Collect the full result: same payload shape as a foreground call.
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_jobs").with_arguments(
+                json!({"action": "result", "job": job_id})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .expect("ida_jobs result");
+    let text = first_text(&resp);
+    assert!(
+        text.contains("\"kind\": \"T2_junk_removal\"") || text.contains("T2_junk_removal"),
+        "job result must carry the analysis payload: {text}"
+    );
+
+    // List shows the finished job.
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_jobs")
+                .with_arguments(json!({"action": "list"}).as_object().unwrap().clone()),
+        )
+        .await
+        .expect("ida_jobs list");
+    assert!(
+        first_text(&resp).contains(&job_id) || first_text(&resp).contains("deob.propose"),
+        "job list: {}",
+        first_text(&resp)
+    );
+
+    // Mutations cannot be backgrounded (safe-mutation principle).
+    let resp = client
+        .call_tool(
+            CallToolRequestParams::new("ida_jobs").with_arguments(
+                json!({"action": "start", "db": handle, "method": "rename",
+                       "params": {"ea": "0x401100", "name": "x"}})
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
+        )
+        .await
+        .expect("ida_jobs mutation guard");
+    assert!(
+        first_text(&resp).contains("cannot be backgrounded"),
+        "mutation must be refused: {}",
+        first_text(&resp)
     );
 
     // edit (rename) then verify revision

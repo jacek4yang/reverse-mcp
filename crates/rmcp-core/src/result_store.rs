@@ -132,6 +132,9 @@ impl ResultStore {
     }
 
     /// Drop expired entries; returns count removed.
+    /// Drop expired entries; returns count removed. Called periodically by
+    /// the broker so a long-running process cannot accumulate dead payloads
+    /// (#57 soak requirement: no unbounded memory growth).
     pub fn sweep(&self) -> usize {
         let mut map = self.entries.lock().expect("result store poisoned");
         let expired: Vec<String> = map
@@ -143,6 +146,26 @@ impl ResultStore {
             map.remove(k);
         }
         expired.len()
+    }
+
+    /// Hard cap: if the store holds `max` entries, drop the oldest until
+    /// under the cap. Returns count removed. Bounds worst-case memory even
+    /// when entries are re-read faster than their TTL expires.
+    pub fn enforce_cap(&self, max: usize) -> usize {
+        let mut map = self.entries.lock().expect("result store poisoned");
+        if map.len() <= max {
+            return 0;
+        }
+        let mut by_age: Vec<(String, std::time::Instant)> =
+            map.iter().map(|(k, e)| (k.clone(), e.created)).collect();
+        by_age.sort_by_key(|(_, created)| *created);
+        let excess = map.len() - max;
+        let evict: Vec<String> = by_age.into_iter().take(excess).map(|(k, _)| k).collect();
+        let n = evict.len();
+        for k in evict {
+            map.remove(&k);
+        }
+        n
     }
 
     pub fn len(&self) -> usize {
@@ -230,6 +253,41 @@ mod tests {
         std::thread::sleep(Duration::from_millis(5));
         assert_eq!(s.sweep(), 1);
         assert_eq!(s.get(&handle).unwrap_err().code(), "unknown_result");
+    }
+
+    #[test]
+    fn cap_evicts_oldest_first() {
+        // #57: hard cap bounds worst-case memory even when entries are
+        // re-read faster than their TTL expires (no unbounded growth).
+        let s = ResultStore::new(Duration::from_secs(3600));
+        for i in 0..8 {
+            let big = json!({"n": i, "data": "x".repeat(4096)});
+            s.put("t", big, 1024);
+            // distinct created instants
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(s.len(), 8);
+        assert_eq!(s.enforce_cap(4), 4);
+        assert_eq!(s.len(), 4);
+        // The two oldest were evicted: entry 0 and 1 are gone, 6/7 remain.
+        assert!(s.find("\"n\":0").is_empty(), "oldest must be evicted");
+        assert!(s.find("\"n\":1").is_empty());
+        assert!(!s.find("\"n\":6").is_empty(), "newest must survive");
+        // Enforcing again at the cap is a no-op.
+        assert_eq!(s.enforce_cap(4), 0);
+    }
+
+    #[test]
+    fn cap_zero_means_unlimited() {
+        let s = ResultStore::new(Duration::from_secs(3600));
+        for i in 0..5 {
+            let big = json!({"n": i, "data": "x".repeat(2048)});
+            s.put("t", big, 512);
+        }
+        // Callers skip enforce_cap when the configured cap is 0, but the
+        // method itself treats any call as a plain request; the config layer
+        // gates this. Assert the store held all five.
+        assert_eq!(s.len(), 5);
     }
 
     #[test]

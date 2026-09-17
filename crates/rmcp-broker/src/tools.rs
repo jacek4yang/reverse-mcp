@@ -457,6 +457,106 @@ pub async fn tool_result(broker: &Broker, args: Value) -> Result<Value, McpError
     }
 }
 
+/// ida_jobs - #57 agent autonomy over long-running analysis. action=start
+/// parks a worker call in the background with the agent's own budget
+/// (timeout_ms, clamp 5s..30min) and returns a job id at once - the agent
+/// keeps working on other DBs/tasks and collects later. action=status shows
+/// bounded progress; action=result returns the full stored outcome (partial
+/// results + resume tokens included - a client-side timeout can no longer
+/// lose data); action=list shows the queue; action=cancel discards a job
+/// (honest note: the in-flight worker frame cannot be interrupted).
+/// Bounded by construction: max 4 concurrent jobs, results TTL'd and swept
+/// by the broker janitor, no extra processes ever spawned.
+pub async fn tool_jobs(broker: &Broker, args: Value) -> Result<Value, McpError> {
+    let action = arg_str(&args, "action").unwrap_or("list");
+    match action {
+        "start" => {
+            let db = arg_str(&args, "db").map(|s| s.to_string());
+            let method = arg_str(&args, "method")
+                .ok_or_else(|| mcp_code("invalid_args", "start requires 'method'"))?
+                .to_string();
+            let (db, session) = resolve_db(broker, db.as_deref()).await?;
+            // Guard rails: only analysis methods may be backgrounded.
+            // Mutations stay synchronous by design (safe-mutation principle):
+            // an in-flight mutation must be revision-checked in the same
+            // agent turn that issued it.
+            const MUTATING: &[&str] = &[
+                "patch_bytes",
+                "set_comment",
+                "rename",
+                "set_type",
+                "func.create",
+                "func.delete",
+                "func.resize",
+                "hr.lvar_rename",
+                "deep.retype",
+                "types.apply",
+                "deob.apply",
+                "plan.apply",
+                "snapshot.restore",
+            ];
+            if MUTATING.contains(&method.as_str()) {
+                return Err(mcp_code(
+                    "invalid_args",
+                    "mutation methods cannot be backgrounded; run them synchronously",
+                ));
+            }
+            let params = args.get("params").cloned().unwrap_or(json!({}));
+            // Same clamp as call_with_timeout: agent-adjustable, bounded.
+            let timeout = params
+                .get("timeout_ms")
+                .and_then(|v| v.as_u64())
+                .map(|ms| std::time::Duration::from_millis(ms.clamp(5_000, 1_800_000)))
+                .unwrap_or(std::time::Duration::from_secs(600));
+            let id = broker
+                .jobs
+                .start(session, &db, &method, params, timeout)
+                .await
+                .map_err(|e| mcp_code(e.code(), &e.to_string()))?;
+            Ok(json!({
+                "job": id,
+                "db": db,
+                "method": method,
+                "status": "running",
+                "note": "agent can keep working; ida_jobs action=status/result to collect",
+            }))
+        }
+        "status" => {
+            let id = arg_str(&args, "job")
+                .ok_or_else(|| mcp_code("invalid_args", "status requires 'job'"))?;
+            broker
+                .jobs
+                .status(id)
+                .await
+                .map_err(|e| mcp_code(e.code(), &e.to_string()))
+        }
+        "result" => {
+            let id = arg_str(&args, "job")
+                .ok_or_else(|| mcp_code("invalid_args", "result requires 'job'"))?;
+            let out = broker
+                .jobs
+                .result(id)
+                .await
+                .map_err(|e| mcp_code(e.code(), &e.to_string()))?;
+            Ok(bound_output(broker, "ida_jobs", out))
+        }
+        "list" => Ok(json!({"jobs": broker.jobs.list().await})),
+        "cancel" => {
+            let id = arg_str(&args, "job")
+                .ok_or_else(|| mcp_code("invalid_args", "cancel requires 'job'"))?;
+            broker
+                .jobs
+                .cancel(id)
+                .await
+                .map_err(|e| mcp_code(e.code(), &e.to_string()))
+        }
+        other => Err(mcp_code(
+            "invalid_args",
+            &format!("unknown jobs action '{other}' (start|status|result|list|cancel)"),
+        )),
+    }
+}
+
 /// ida_segments handled inside functions tool? No - own tool slice via inspect.
 pub async fn tool_segments(broker: &Broker, args: Value) -> Result<Value, McpError> {
     let (db, session) = resolve_db(broker, arg_str(&args, "db")).await?;
@@ -1114,12 +1214,42 @@ pub async fn tool_health(broker: &Broker, _args: Value) -> Result<Value, McpErro
         pool.ensure_worker_exe().is_ok() && pool.worker_has_idalib_feature()
     };
 
+    // #57 long-run reliability view: per-session worker health + result-store
+    // janitor counters, so an agent (or a soak run) can observe drift.
+    let sessions: Vec<Value> = {
+        let pool = broker.pool.lock().await;
+        let open = broker.open_dbs.lock().await;
+        let mut rows = Vec::new();
+        for (h, path) in open.iter() {
+            if let Some(s) = pool.session(h).await {
+                let s = s.lock().await;
+                rows.push(json!({
+                    "db": h,
+                    "path": path,
+                    "health": format!("{:?}", s.health()).to_lowercase(),
+                    "worker_pid": s.hello().pid,
+                }));
+            }
+        }
+        rows
+    };
+    let janitor_swept = *broker.janitor_swept.lock().await;
+    let store_len = broker.store.len();
+
     Ok(json!({
         "healthy": healthy,
         "worker_probe_ok": worker_probe_ok,
         "idalib_feature": idalib_feature,
         "idadir_set": idadir_set,
         "installations": installs,
+        // #57: live broker state for soak/run monitoring.
+        "sessions": sessions,
+        "result_store": {
+            "entries": store_len,
+            "max_entries": broker.config.result_max_entries,
+            "ttl_secs": broker.config.result_ttl.as_secs(),
+            "janitor_swept_total": janitor_swept,
+        },
         "hint": hint,
     }))
 }

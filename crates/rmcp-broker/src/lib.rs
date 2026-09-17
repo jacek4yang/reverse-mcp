@@ -5,6 +5,7 @@
 //! the result store.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, GetPromptRequestParams,
@@ -20,6 +21,7 @@ use tokio::sync::Mutex;
 use rmcp_core::config::Config;
 use rmcp_core::result_store::ResultStore;
 
+pub mod jobs;
 pub mod prompts;
 pub mod recovery;
 pub mod registry;
@@ -113,21 +115,62 @@ pub struct Broker {
     pub pool: Mutex<WorkerPool>,
     /// db handle string -> opened path (for sessions listing).
     pub open_dbs: Mutex<Vec<(String, String)>>,
+    /// Entries removed by the store janitor (lifetime total; observability).
+    pub janitor_swept: Mutex<u64>,
+    /// #57 background analysis jobs (agent autonomy: start/status/result/
+    /// list/cancel) - outcome stored until read or TTL; never lost.
+    pub jobs: jobs::JobManager,
 }
 
 impl Broker {
     pub fn new(config: Config) -> Arc<Self> {
         let ttl = config.result_ttl;
+        let jobs = jobs::JobManager::new(4, ttl);
         Arc::new(Self {
             store: ResultStore::new(ttl),
+            jobs,
             config,
             pool: Mutex::new(WorkerPool::new()),
             open_dbs: Mutex::new(Vec::new()),
+            janitor_swept: Mutex::new(0),
+        })
+    }
+
+    /// Background janitor: sweeps expired result-store entries and enforces
+    /// the hard entry cap every `interval`. Runs for the broker's lifetime
+    /// so a soak-scale session cannot accumulate dead payloads (#57).
+    pub fn spawn_store_janitor(
+        self: &Arc<Self>,
+        interval: Duration,
+    ) -> tokio::task::JoinHandle<()> {
+        let broker = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(interval);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                let swept = broker.store.sweep();
+                let jobs_swept = broker.jobs.sweep().await;
+                let max = broker.config.result_max_entries;
+                let capped = if max > 0 {
+                    broker.store.enforce_cap(max)
+                } else {
+                    0
+                };
+                if swept + capped + jobs_swept > 0 {
+                    // Low-noise observability: janitor work is visible via
+                    // ida_health's janitor counters, not stderr spam.
+                    let mut n = broker.janitor_swept.lock().await;
+                    *n += (swept + capped + jobs_swept) as u64;
+                }
+            }
         })
     }
 
     /// Serve MCP over stdio. Returns when stdin closes.
     pub async fn serve_stdio(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error>> {
+        // #57 long-run reliability: janitor keeps the result store bounded.
+        self.spawn_store_janitor(Duration::from_secs(60));
         use rmcp::ServiceExt;
         let service = ReverseMcpServer::new(self.clone());
         let stdio = rmcp::transport::stdio();
@@ -144,6 +187,8 @@ impl Broker {
         self: Arc<Self>,
         addr: std::net::SocketAddr,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // #57: same janitor for the long-lived HTTP broker.
+        self.spawn_store_janitor(Duration::from_secs(60));
         use rmcp::transport::streamable_http_server::{
             StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
         };

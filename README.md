@@ -10,7 +10,7 @@ MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.
 
 ## What it does
 
-An agent connects over MCP and gets **34 tools** (full reference with schemas
+An agent connects over MCP and gets **35 tools** (full reference with schemas
 in [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md)). Highlights:
 
 | tool | purpose |
@@ -108,7 +108,10 @@ manifests, ABI-probe status, and discovered installs.
 
 ## Prerequisites
 
-- Windows x86_64 (Linux/macOS untested - see platform matrix in `doctor`/docs)
+- Windows x86_64: production supported with IDA Pro 9.2 (real-IDA gated
+  suite, hostile-input corpus and soak gate all green). Linux/macOS:
+  architecture-supported, unverified until #48 - see the platform matrix
+  in `doctor`/docs.
 - **IDA Pro 9.2** with a valid license (launched at least once)
 - Rust stable (building only; version pinned via `rust-toolchain.toml`)
 

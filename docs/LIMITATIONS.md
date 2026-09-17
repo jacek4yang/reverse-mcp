@@ -195,6 +195,12 @@ under "Shipped" does not work yet.
   DotSlash pinfiles cover linux-x86_64/macos-x86_64/macos-aarch64, but no
   real-IDA runtime test has passed there — platform support is claimed only
   from tested facts (expansion tracked in #48).
+- Windows x86_64 + IDA 9.2 production status (#57): the full real-IDA gated
+  suite (19 tests incl. hostile-corpus and malformed-input liveness), a
+  60-second lifecycle soak gate (12h/24h via scripts/soak.ps1 for release
+  sign-off) and the release checklist (docs/RELEASE_CHECKLIST.md) are part
+  of the Windows release gate. The result store is janitor-swept with a
+  hard entry cap; worker startup is hello-frame timeout bounded.
 - One verified backend version: 9.2 (pinned in the backend registry with
   SDK commit + FFI/generator versions + ABI probe facts). Other installed
   IDA versions are discovered and reported as `backend unavailable`.
