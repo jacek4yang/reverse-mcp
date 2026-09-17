@@ -1230,6 +1230,7 @@ version = "0.1.0"
 dependencies = [
  "idalib",
  "idalib-build",
+ "rmcp",
  "rmcp-broker",
  "rmcp-core",
  "rmcp-worker",

@@ -1,0 +1,226 @@
+{
+  "description": "#62 Tier-A source-ground-truth corpus; static byte inputs only - never executed",
+  "malware_tier_b": "PENDING: no local user-provided samples were supplied; Tier B acceptance remains explicitly open (see README)",
+  "binaries": [
+    {
+      "label": "our_reverse_mcp",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\reverse-mcp.exe",
+      "sha256": "5d00a9a289af8e45dd37be34a6516bce34203f84c61e256764b0f71ac44df88f",
+      "size_mb": 9.67,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release; Rust stable (rust-toolchain.toml)",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "async-runtime",
+        "serde-generics",
+        "tokio-callbacks"
+      ]
+    },
+    {
+      "label": "our_e2e_stdio",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\e2e_stdio-81490d15dd1b89f4.exe",
+      "sha256": "88e49e77b5cc0e22e9373c5c7ca5def234489b07869196b7cd93ae7706f9559a",
+      "size_mb": 7.16,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "mcp-protocol",
+        "tokio-callbacks"
+      ]
+    },
+    {
+      "label": "our_http_multi",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\http_multi_client-bcca7d8b8d94b025.exe",
+      "sha256": "d5f662b91e74da5c7cbc4d20328cecde7863c59a0c3d78700b0c2f8f83e5ef71",
+      "size_mb": 7.76,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "http-stack",
+        "async-runtime"
+      ]
+    },
+    {
+      "label": "our_recovery",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\recovery-5f66410496fde45d.exe",
+      "sha256": "a36ef7a9a957e55efbdaf2d19cdce89387a8b9cfc5df11909cd0a13eefd627d2",
+      "size_mb": 1.5,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "process-management",
+        "async-runtime"
+      ]
+    },
+    {
+      "label": "our_soak",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\soak-6b5c736bb7a61c80.exe",
+      "sha256": "04fb75fecd451b5e8aeb59ace379132b373098c97be5d652e910e4afefb66777",
+      "size_mb": 1.48,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "soak-lifecycle",
+        "async-runtime"
+      ]
+    },
+    {
+      "label": "our_corpus_real",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\corpus_real-4f2eb13f05e8ab46.exe",
+      "sha256": "c9c82bd5ec867ac6b75f07850a56bf8bf1229407d329e2a9dd4c49c7dcd301a5",
+      "size_mb": 1.6,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "async-runtime"
+      ]
+    },
+    {
+      "label": "our_stress",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\stress-bafaff282d6a84fe.exe",
+      "sha256": "1b9e0b8dbb8743cf709dc6569506cdd4760b22d67215520b92a7cdbc4592b1e7",
+      "size_mb": 1.63,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "concurrency",
+        "async-runtime"
+      ]
+    },
+    {
+      "label": "our_ida_versions",
+      "path": "D:\\Workspace\\reverse-mcp\\target\\release\\deps\\ida_versions-021255f724653b8b.exe",
+      "sha256": "4dfa625af18744464d364432ace543704f63169f62b32a520259e4137df09093",
+      "size_mb": 1.48,
+      "source": "this-repo HEAD",
+      "provenance": "cargo build --release --tests",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "discovery",
+        "async-runtime"
+      ]
+    },
+    {
+      "label": "rust_cargo_clippy",
+      "path": "D:\\Applications\\Scoop\\persist\\rustup-msvc\\.cargo\\bin\\cargo-clippy.exe",
+      "sha256": "6f4bef66261261fcb43131be8720bab817d403a09edec7455c371974b90bdb7e",
+      "size_mb": 12.13,
+      "source": "rust-clippy (rustup 1.8x, pinned by toolchain file)",
+      "provenance": "official rustup distribution",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "lto",
+        "regex",
+        "serde"
+      ]
+    },
+    {
+      "label": "rust_cargo_audit",
+      "path": "D:\\Applications\\Scoop\\persist\\rustup-msvc\\.cargo\\bin\\cargo-audit.exe",
+      "sha256": "e958c427ecc20709cfead4b1325a22fa0a975f9577114c7117165f95d00f5a18",
+      "size_mb": 16.77,
+      "source": "cargo-audit (rustsec official)",
+      "provenance": "official cargo-install release",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "serde",
+        "tls-stack"
+      ]
+    },
+    {
+      "label": "rust_cargo_deny",
+      "path": "D:\\Applications\\Scoop\\persist\\rustup-msvc\\.cargo\\bin\\cargo-deny.exe",
+      "sha256": "cad54f6ef8b5e6a76943840340ed4ec87c111876e177ce11b4101f67a57a7f76",
+      "size_mb": 8.53,
+      "source": "cargo-deny (EmbarkStudios official)",
+      "provenance": "official cargo-install release",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "serde",
+        "regex"
+      ]
+    },
+    {
+      "label": "os_curl",
+      "path": "C:\\Windows\\System32\\curl.exe",
+      "sha256": "73d24149ff289afc49ec41f08918ef9faa727d39ad993e929757dc2ddafab805",
+      "size_mb": 0.78,
+      "source": "Microsoft Windows OS build of curl 8.x",
+      "provenance": "windows component",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "crypto-tls",
+        "string-heavy",
+        "callbacks"
+      ]
+    },
+    {
+      "label": "os_tar",
+      "path": "C:\\Windows\\System32\\tar.exe",
+      "sha256": "4e598a8cec84af779e3377442fce2b94b976f614ed4c6e5a665e19308fd1e379",
+      "size_mb": 0.09,
+      "source": "Microsoft Windows OS build of bsdtar (libarchive)",
+      "provenance": "windows component",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "archive-format-parsing",
+        "string-heavy"
+      ]
+    },
+    {
+      "label": "ida_libz3",
+      "path": "D:\\Applications\\IDA_Professional\\libz3.dll",
+      "sha256": "62a9ba8b4de1c434a3534a74d7e613d86e7dcdd0902c033f169a593862154038",
+      "size_mb": 15.05,
+      "source": "Z3 SMT solver (Microsoft Research), bundled with IDA 9.2",
+      "provenance": "official IDA distribution component",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "large-cfg",
+        "deep-recursion",
+        "templates"
+      ]
+    },
+    {
+      "label": "ida_plugin_dwarf",
+      "path": "D:\\Applications\\IDA_Professional\\plugins\\dwarf.dll",
+      "sha256": "0b9e44300c99802c519d26e2bac246c70caad95f3c87bda6d0d41da5ba97febc",
+      "size_mb": 0.56,
+      "source": "IDA 9.2 DWARF loader plugin",
+      "provenance": "official IDA distribution component",
+      "ground_truth": "source",
+      "opt": "release",
+      "difficult_shapes": [
+        "format-parsing",
+        "large-cfg"
+      ]
+    }
+  ]
+}
