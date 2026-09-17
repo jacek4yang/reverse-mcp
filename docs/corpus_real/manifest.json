@@ -1,0 +1,269 @@
+{
+  "description": "real-world benign Windows x86_64 corpus (#60); static byte inputs only - never executed",
+  "binaries": [
+    {
+      "label": "os_cmd_certutil",
+      "path": "C:\\Windows\\System32\\certutil.exe",
+      "sha256": "3220895dbd51a14facaa617a0d98e6dc8d0790451d5a01344dcbe47d686b7648",
+      "size_mb": 1.52,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_curl",
+      "path": "C:\\Windows\\System32\\curl.exe",
+      "sha256": "73d24149ff289afc49ec41f08918ef9faa727d39ad993e929757dc2ddafab805",
+      "size_mb": 0.78,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_tar",
+      "path": "C:\\Windows\\System32\\tar.exe",
+      "sha256": "4e598a8cec84af779e3377442fce2b94b976f614ed4c6e5a665e19308fd1e379",
+      "size_mb": 0.09,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_robocopy",
+      "path": "C:\\Windows\\System32\\Robocopy.exe",
+      "sha256": "805d720d24ac5897955b63d3d9db903453c10bd59e7c12a833e42e4ea8d47240",
+      "size_mb": 0.18,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_findstr",
+      "path": "C:\\Windows\\System32\\findstr.exe",
+      "sha256": "867816f8a714a87f5f573ebbe3a526931fbe787cc03b4ec7ac8a970c9d8c0264",
+      "size_mb": 0.06,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_regsvr32",
+      "path": "C:\\Windows\\System32\\regsvr32.exe",
+      "sha256": "e2546fe32071eaa351f1fd188ebf6d3c2787aa186a6a42156a7b75bc881e14d2",
+      "size_mb": 0.09,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_tasklist",
+      "path": "C:\\Windows\\System32\\tasklist.exe",
+      "sha256": "62800679c55682f2f5f38b3df9080d12480bea78b5b8476eace9df014f353b14",
+      "size_mb": 0.12,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_sc",
+      "path": "C:\\Windows\\System32\\sc.exe",
+      "sha256": "a452bfcb6000d03942ddfaddcda5a7eb121447ed99b1ba090446b4a989f1f7ae",
+      "size_mb": 0.1,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_netstat",
+      "path": "C:\\Windows\\System32\\netstat.exe",
+      "sha256": "dc1fcc0ffa3b1fa23c947796a25f5b34f532045f0f65532532d1203b88528593",
+      "size_mb": 0.07,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_cmd_vssadmin",
+      "path": "C:\\Windows\\System32\\vssadmin.exe",
+      "sha256": "ca35cb78f589520db0eaa2af0453dc472e6aa75709a6cb3053dc38f125024e50",
+      "size_mb": 0.16,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_notepad",
+      "path": "C:\\Windows\\System32\\notepad.exe",
+      "sha256": "468ffe129c395abf6b21a09efdf261910a95fb98aa982ead73caa7b2b684577e",
+      "size_mb": 0.34,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_cmd",
+      "path": "C:\\Windows\\System32\\cmd.exe",
+      "sha256": "97ac98b1a92c286054cce55239cfccdfc23a5517bd07fe693072c9ca96c7dabb",
+      "size_mb": 0.33,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_mmc",
+      "path": "C:\\Windows\\System32\\mmc.exe",
+      "sha256": "aefb97dd9aef3a6d382cea8869679fc9c6fedb720ccb28d6e93f5355ea34951c",
+      "size_mb": 1.82,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_taskmgr",
+      "path": "C:\\Windows\\System32\\Taskmgr.exe",
+      "sha256": "580dda0bb155f7faf5e9f11e5bf5b4fdc677cdb2adb4dbf48708121ce3965cbd",
+      "size_mb": 5.48,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_smartscreen",
+      "path": "C:\\Windows\\System32\\smartscreen.exe",
+      "sha256": "11f0bbe2201d0340a8bf5aeb7531b2d59fbf8cf091bdc3ed3fa5b985a0c58d0f",
+      "size_mb": 0.58,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_logonui",
+      "path": "C:\\Windows\\System32\\LogonUI.exe",
+      "sha256": "56346443a0d60b793c9a15b49dc12b885d21aa835e4b22e3d66d30158b70c1ab",
+      "size_mb": 0.07,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_dwm",
+      "path": "C:\\Windows\\System32\\dwm.exe",
+      "sha256": "00eb3d5e6092e1246bd0956ff0a341c2afa6f96bb805b93d36a7192a9c29e475",
+      "size_mb": 0.13,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_runtimebroker",
+      "path": "C:\\Windows\\System32\\RuntimeBroker.exe",
+      "sha256": "8de24f8e51cc05db2581b6240b834acecbb0e012b8722cc3365f884d7ba4b409",
+      "size_mb": 0.12,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_wermgr",
+      "path": "C:\\Windows\\System32\\wermgr.exe",
+      "sha256": "c9b2e514c0378eb2d05f791e1034e7a6c704199fd05c5d56376852a6d410c056",
+      "size_mb": 0.28,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_wmiprvse",
+      "path": "C:\\Windows\\System32\\wbem\\WmiPrvSE.exe",
+      "sha256": "6cc491197ad4319467e5eb965ba3958455e00cbcf9b8ec2f09e5857e3d55740f",
+      "size_mb": 0.52,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_app_powershell",
+      "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "sha256": "8bb6fa8c283b4d92120b1ef249a9b311b0f804d4cabbe9981159976c8be76a5e",
+      "size_mb": 0.47,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_sys_explorer",
+      "path": "C:\\Windows\\explorer.exe",
+      "sha256": "87811a107eed62900b230c49a252170d6a7307e94a08307ce972f9b9b8155d54",
+      "size_mb": 3.23,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "os_kernel_ntoskrnl",
+      "path": "C:\\Windows\\System32\\ntoskrnl.exe",
+      "sha256": "d90c69cfa925d42037ef1cdba3ff5b3f13cc14e16060938073b97e396fdde2f2",
+      "size_mb": 12.5,
+      "machine": "x86_64",
+      "source": "windows-os"
+    },
+    {
+      "label": "ida_main_ida",
+      "path": "D:\\Applications\\IDA_Professional\\ida.exe",
+      "sha256": "29933e5adaf8bdae674b001e27ab76f0b59a3fdb3cbc70e745300a8eb5ce5cb2",
+      "size_mb": 5.75,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "ida_lib_libclang",
+      "path": "D:\\Applications\\IDA_Professional\\libclang.dll",
+      "sha256": "b049c8f1f316c736fdf09d207d59188959363cca2ff6f11fc03d439de1fc9317",
+      "size_mb": 50.49,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "ida_lib_libz3",
+      "path": "D:\\Applications\\IDA_Professional\\libz3.dll",
+      "sha256": "62a9ba8b4de1c434a3534a74d7e613d86e7dcdd0902c033f169a593862154038",
+      "size_mb": 15.05,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "ida_lib_qt6core",
+      "path": "D:\\Applications\\IDA_Professional\\Qt6Core.dll",
+      "sha256": "79e03264be83aea4161733b210fdaffa41cbb5a591ffc0a28a989a99539c1806",
+      "size_mb": 5.75,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "ida_lib_qt6widgets",
+      "path": "D:\\Applications\\IDA_Professional\\Qt6Widgets.dll",
+      "sha256": "f2c9a50d008d4c9db086156255ced430d39f0cd1671b2ece556b3d65777c8869",
+      "size_mb": 6.2,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "ida_plugin_hexarc",
+      "path": "D:\\Applications\\IDA_Professional\\plugins\\hexarc.dll",
+      "sha256": "64437a4cfc73a0b59c7ba66302062ba8085a413223cea29e8a14700a61ce456a",
+      "size_mb": 3.06,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "ida_plugin_dwarf",
+      "path": "D:\\Applications\\IDA_Professional\\plugins\\dwarf.dll",
+      "sha256": "0b9e44300c99802c519d26e2bac246c70caad95f3c87bda6d0d41da5ba97febc",
+      "size_mb": 0.56,
+      "machine": "x86_64",
+      "source": "ida-pro-9.2-install"
+    },
+    {
+      "label": "rust_cargo_audit",
+      "path": "D:\\Applications\\Scoop\\persist\\rustup-msvc\\.cargo\\bin\\cargo-audit.exe",
+      "sha256": "e958c427ecc20709cfead4b1325a22fa0a975f9577114c7117165f95d00f5a18",
+      "size_mb": 16.77,
+      "machine": "x86_64",
+      "source": "rust-toolchain"
+    },
+    {
+      "label": "rust_cargo_clippy",
+      "path": "D:\\Applications\\Scoop\\persist\\rustup-msvc\\.cargo\\bin\\cargo-clippy.exe",
+      "sha256": "6f4bef66261261fcb43131be8720bab817d403a09edec7455c371974b90bdb7e",
+      "size_mb": 12.13,
+      "machine": "x86_64",
+      "source": "rust-toolchain"
+    },
+    {
+      "label": "rust_cargo_deny",
+      "path": "D:\\Applications\\Scoop\\persist\\rustup-msvc\\.cargo\\bin\\cargo-deny.exe",
+      "sha256": "cad54f6ef8b5e6a76943840340ed4ec87c111876e177ce11b4101f67a57a7f76",
+      "size_mb": 8.53,
+      "machine": "x86_64",
+      "source": "rust-toolchain"
+    }
+  ]
+}

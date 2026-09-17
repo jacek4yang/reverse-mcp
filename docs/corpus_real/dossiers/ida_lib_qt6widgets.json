@@ -1,0 +1,52 @@
+{
+  "confirmed": 2,
+  "events": [
+    {
+      "ea": 6442644544,
+      "kind": "budget_partial",
+      "resumable": true
+    },
+    {
+      "error": "worker failure: worker failure: idalib: function frame is wrong",
+      "kind": "fallback",
+      "stage": "deep.function"
+    },
+    {
+      "ea": 6442508064,
+      "kind": "budget_partial",
+      "resumable": true
+    },
+    {
+      "error": "worker failure: worker failure: bad query: missing field `min`",
+      "kind": "fallback",
+      "stage": "index.query"
+    }
+  ],
+  "evidence": {
+    "crypto_constants": {
+      "confirmed": 0,
+      "hits": 6
+    },
+    "deep_analysis": {
+      "bounded_partial": 3,
+      "completed": 0
+    },
+    "functions": {
+      "count": 1000,
+      "status": "confirmed",
+      "truncated_at": 1000
+    },
+    "imports": {
+      "error": "worker failure: worker failure: unknown method 'imports'",
+      "status": "unavailable"
+    },
+    "strings": {
+      "count": 100,
+      "status": "confirmed"
+    }
+  },
+  "heuristic": 6,
+  "label": "ida_lib_qt6widgets",
+  "open": "ok",
+  "unavailable": 1
+}

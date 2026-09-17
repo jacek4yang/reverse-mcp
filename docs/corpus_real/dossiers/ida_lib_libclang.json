@@ -1,0 +1,14 @@
+{
+  "confirmed": 0,
+  "events": [
+    {
+      "kind": "timeout",
+      "stage": "probe"
+    }
+  ],
+  "evidence": {},
+  "heuristic": 0,
+  "label": "ida_lib_libclang",
+  "open": "ok",
+  "unavailable": 0
+}
