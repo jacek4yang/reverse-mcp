@@ -234,6 +234,12 @@ pub fn insn_mnemonic(ea: u64) -> String {
     unsafe { ffi::backend::idalib_print_insn_mnem(into_ea(ea)) }
 }
 
+/// Promote undefined bytes at `ea` into an instruction; returns the length
+/// (>0) or a non-positive value when the processor cannot decode there.
+pub fn create_insn(ea: u64) -> i32 {
+    unsafe { ffi::backend::idalib_create_insn(into_ea(ea)) }.0
+}
+
 /// Base (SEL) of the segment containing the address.
 pub fn segment_base(ea: u64) -> Option<u64> {
     let seg = unsafe { segment::getseg(into_ea(ea)) };

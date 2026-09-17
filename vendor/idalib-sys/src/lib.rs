@@ -1164,6 +1164,7 @@ pub mod ffix {
 
         unsafe fn idalib_get_insn_feature(ea: c_ulonglong) -> u32;
         unsafe fn idalib_print_insn_mnem(ea: c_ulonglong) -> String;
+        unsafe fn idalib_create_insn(ea: c_ulonglong) -> c_int;
 
         unsafe fn idalib_get_segm_base(s: *const segment_t) -> c_ulonglong;
     }
@@ -1376,12 +1377,12 @@ pub mod name {
 
 pub mod backend {
     pub use super::ffix::{
-        idalib_add_func, idalib_del_func, idalib_demangle_name, idalib_disasm_line,
-        idalib_enum_import_names, idalib_func_chunks, idalib_func_is_tail, idalib_get_fchunk_qty,
-        idalib_get_fileregion_ea, idalib_get_fileregion_offset, idalib_get_first_fixup_ea,
-        idalib_get_fixup, idalib_get_imagebase, idalib_get_import_module_name,
-        idalib_get_import_module_qty, idalib_get_insn_feature, idalib_get_name,
-        idalib_get_next_fixup_ea, idalib_get_segm_base, idalib_get_sp_delta,
+        idalib_add_func, idalib_create_insn, idalib_del_func, idalib_demangle_name,
+        idalib_disasm_line, idalib_enum_import_names, idalib_func_chunks, idalib_func_is_tail,
+        idalib_get_fchunk_qty, idalib_get_fileregion_ea, idalib_get_fileregion_offset,
+        idalib_get_first_fixup_ea, idalib_get_fixup, idalib_get_imagebase,
+        idalib_get_import_module_name, idalib_get_import_module_qty, idalib_get_insn_feature,
+        idalib_get_name, idalib_get_next_fixup_ea, idalib_get_segm_base, idalib_get_sp_delta,
         idalib_get_switch_info, idalib_getn_fchunk, idalib_print_insn_mnem, idalib_save_database,
         idalib_set_func_end, idalib_set_func_start, idalib_set_name,
     };
