@@ -142,7 +142,7 @@ flagged.
 | mock backend unit tests | `crates/rmcp-ida` | no |
 | core (discovery, protocol, store, handles) | `crates/rmcp-core` | no |
 | worker dispatch incl. revision guard | `crates/rmcp-worker` | no |
-| MCP e2e over stdio + HTTP (34 tools) | `crates/rmcp-broker/tests/e2e_stdio.rs` | no |
+| MCP e2e over stdio + HTTP (35 tools) | `crates/rmcp-broker/tests/e2e_stdio.rs` | no |
 | CLI exit-code tests | `tests/cli.rs` | no |
 | real IDA full chain + two concurrent DBs | `tests/idalib_real.rs` (`--ignored`) | yes, local |
 

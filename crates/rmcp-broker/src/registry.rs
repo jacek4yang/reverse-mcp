@@ -144,6 +144,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "task": {"type": "string", "enum": ["export", "identify", "map"]}, "target": {"type": "string", "description": "function EA (identify)"}, "reference": {"type": "object", "description": "reference sig index JSON (identify)"}, "from": {"type": "object", "description": "from sig index (map)"}, "to": {"type": "object", "description": "to sig index (map)"}, "max_candidates": {"type": "integer"}, "max_transfers": {"type": "integer"}}, "required": ["task"]}),
         },
         ToolDef {
+            name: "ida_jobs",
+            description: "Background analysis jobs (#57 agent autonomy). action=start: park a worker call (method + params, analysis methods only - mutations stay synchronous) in the broker with the agent's own timeout_ms budget (5s..30min, default 600s) and get a job id immediately; keep working on other DBs/tasks and collect later - nothing is lost on client disconnects or timeouts (results include deep-analysis partial output and resume tokens). action=status: bounded progress view. action=result: full stored outcome (repeatable until TTL). action=list: the job queue. action=cancel: discard a job (honest note: the in-flight worker frame cannot be interrupted). Bounded by construction: max 4 concurrent jobs, finished results TTL'd and swept by the broker janitor, no extra worker processes.",
+            schema: json!({"type": "object", "properties": {"action": {"type": "string", "enum": ["start", "status", "result", "list", "cancel"]}, "db": {"type": "string"}, "method": {"type": "string", "description": "worker method to run in background (start)"}, "params": {"type": "object", "description": "worker call params incl. timeout_ms (start)"}, "job": {"type": "string", "description": "job id (status|result|cancel)"}}, "required": ["action"]}),
+        },
+        ToolDef {
             name: "ida_health",
             description: "Self-diagnosis report that works even with no IDA install found: discovery results, runtime DLL presence, worker probe, idalib feature, and a remediation hint.",
             schema: json!({"type": "object"}),
@@ -223,6 +228,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_segments" => tools::tool_segments(broker, args).await,
         "ida_installations" => tools::tool_installations(broker, args).await,
         "ida_health" => tools::tool_health(broker, args).await,
+        "ida_jobs" => tools::tool_jobs(broker, args).await,
         "ida_evidence" => tools::tool_evidence(broker, args).await,
         "ida_analyze" => tools::tool_analyze(broker, args).await,
         "ida_deep" => tools::tool_deep(broker, args).await,
