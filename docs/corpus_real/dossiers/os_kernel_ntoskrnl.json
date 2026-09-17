@@ -1,0 +1,52 @@
+{
+  "confirmed": 2,
+  "events": [
+    {
+      "ea": 5371397088,
+      "kind": "budget_partial",
+      "resumable": true
+    },
+    {
+      "ea": 5370983888,
+      "kind": "budget_partial",
+      "resumable": true
+    },
+    {
+      "ea": 5371266816,
+      "kind": "budget_partial",
+      "resumable": true
+    },
+    {
+      "error": "worker failure: worker failure: bad query: missing field `min`",
+      "kind": "fallback",
+      "stage": "index.query"
+    }
+  ],
+  "evidence": {
+    "crypto_constants": {
+      "confirmed": 0,
+      "hits": 5
+    },
+    "deep_analysis": {
+      "bounded_partial": 3,
+      "completed": 0
+    },
+    "functions": {
+      "count": 1000,
+      "status": "confirmed",
+      "truncated_at": 1000
+    },
+    "imports": {
+      "error": "worker failure: worker failure: unknown method 'imports'",
+      "status": "unavailable"
+    },
+    "strings": {
+      "count": 100,
+      "status": "confirmed"
+    }
+  },
+  "heuristic": 5,
+  "label": "os_kernel_ntoskrnl",
+  "open": "ok",
+  "unavailable": 1
+}

@@ -30,7 +30,27 @@ download exists in this repository, and none will be added.
 - Fake-AES constant fragments: the scanner must NOT report `confirmed`
   for 4-byte fragments (the not-claiming path is the tested behavior).
 
+## Real-world benign corpus (#60)
+
+`docs/corpus_real/manifest.json` pins 33 real Windows x86_64 binaries from
+local trusted installs only (Windows OS binaries, the local IDA Pro 9.2
+install, the local Rust toolchain): SHA-256 + size + source per entry.
+Categories covered: OS command tools, C++/RTTI-heavy apps (Taskmgr, mmc,
+explorer), the kernel image (ntoskrnl), template/STL-heavy libraries
+(libclang 50 MB, libz3, Qt6), and Rust binaries.
+
+**Static byte inputs only - never executed.** Analysis runs exclusively
+through the public MCP surface (`tests/corpus_real.rs`); one bounded JSON
+dossier per binary lands in `docs/corpus_real/dossiers/`, and
+`docs/corpus_real/report.json` is the acceptance report (open/analyze
+success, function counts, deep-analysis completion vs bounded partial,
+confirmed/heuristic counts, timeout/fallback events, worker health).
+
+Run: `cargo test -p reverse-mcp --release --features idalib --test
+corpus_real -- --ignored --test-threads=1` (needs licensed IDA 9.2).
+
 ## Real-malware research samples
+
 
 Policy: only user-provided, hash-pinned samples with documented provenance
 and license permission; local-only (never committed, never downloaded by

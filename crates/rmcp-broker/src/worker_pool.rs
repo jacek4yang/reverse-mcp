@@ -276,6 +276,26 @@ impl WorkerPool {
         backend_kind: &str,
         ida_version: &str,
     ) -> Result<String> {
+        self.spawn_for_with_budget(
+            db_path,
+            max_workers,
+            backend_kind,
+            ida_version,
+            serde_json::json!({}),
+        )
+        .await
+    }
+
+    /// Like `spawn_for` but accepts extra db.open params (timeout_ms budget
+    /// etc. — #60: large binaries need longer open budgets).
+    pub async fn spawn_for_with_budget(
+        &mut self,
+        db_path: &str,
+        max_workers: usize,
+        backend_kind: &str,
+        ida_version: &str,
+        db_open_params: Value,
+    ) -> Result<String> {
         if self.sessions.len() >= max_workers {
             return Err(Error::Worker(format!(
                 "max_workers={} reached; close a database first",
@@ -429,9 +449,24 @@ impl WorkerPool {
 
         {
             let s = session.lock().await;
-            s.call("backend.select", serde_json::json!({"kind": backend_kind}))
-                .await?;
-            s.call("db.open", serde_json::json!({"path": db_path}))
+            // Large binaries (50MB+ DLLs, kernel images, thousands of
+            // functions) take longer than the default call timeout just to
+            // auto-analyze during db.open. The open budget is the agent's
+            // clamped timeout_ms (5s..30min, default 15min for opens) -
+            // matches the #57 agent-autonomy contract that a budget never
+            // silently discards work.
+            let open_budget = db_open_params
+                .get("timeout_ms")
+                .and_then(|v| v.as_u64())
+                .map(|ms| std::time::Duration::from_millis(ms.clamp(5_000, 1_800_000)))
+                .unwrap_or(std::time::Duration::from_secs(900));
+            s.call_with_timeout(
+                "backend.select",
+                serde_json::json!({"kind": backend_kind}),
+                open_budget,
+            )
+            .await?;
+            s.call_with_timeout("db.open", serde_json::json!({"path": db_path}), open_budget)
                 .await?;
         }
 
