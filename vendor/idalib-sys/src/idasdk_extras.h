@@ -149,6 +149,13 @@ inline rust::String idalib_demangle_name(const char *name) {
 }
 
 // ---- instruction features ----
+// Promote undefined bytes at ea into an instruction (ida_bytes create_insn).
+// Returns the instruction length (>0) or 0/-1 when the bytes cannot be
+// decoded as an instruction by the current processor. Used by the generic
+// zero-function recovery path to give add_func code anchors.
+inline int idalib_create_insn(ea_t ea) {
+  return create_insn(ea);
+}
 // Canon feature bits of the instruction at ea (0 if it cannot be decoded).
 inline uint32_t idalib_get_insn_feature(ea_t ea) {
   insn_t insn;

@@ -10,7 +10,7 @@
 //! Run explicitly: cargo test -p reverse-mcp --features idalib
 //!                 --test idalib_real -- --ignored
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rmcp_broker::WorkerPool;
@@ -2228,6 +2228,7 @@ async fn real_ida_issue45_block_diff() {
 async fn real_ida_issue57_hostile_corpus() {
     // STATIC ANALYSIS ONLY: the corpus fixtures are byte inputs for IDA to
     // parse; no test or agent step executes them (issue #57 hard rule).
+    // parse; no test or agent step executes them (issue #57 hard rule).
     //
     // corpus_hostile.exe: synthetic inert fixture packing the hostile
     // stressors (deep recursion, wide call graph, opaque predicates via
@@ -2456,4 +2457,152 @@ async fn real_ida_issue57_malformed_inputs_no_broker_crash() {
     s.call("db.close", json!({})).await.expect("close");
     drop(s);
     pool.close(&handle).await.expect("close pool");
+}
+
+// ---- Issue #66: cross-architecture hardening ----
+
+#[path = "fixtures/i66_elfs.rs"]
+mod i66_elfs;
+
+/// Issue #66: cross-arch diagnostics + zero-function recovery.
+///
+/// Root cause of the #64 Mozi/MIPS 0-function result (documented in
+/// docs/malware_acceptance/README.md): statically linked MIPS ELF without
+/// symbol/FDE cues finishes IDA auto-analysis with 0 functions even though
+/// the executable segment holds decodable code (IDA has no anchor to start
+/// function discovery from; the ARM ELF's EXIDX provided that anchor).
+///
+/// The fix is generic (no sample/hash logic): analyze_wait runs a bounded
+/// executable-segment sweep - create_insn + add_func - letting IDA decide
+/// all boundaries; recovery telemetry is reported in the response and
+/// db.info exposes entrypoints/executable segments/analysis state.
+///
+/// Regression fixtures here are synthetic minimal ELFs (MIPS/x86/ARM)
+/// built in-memory - static byte inputs only, nothing executes.
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue66_cross_arch_recovery() {
+    // Sanity on the synthetic builders.
+    assert_eq!(i66_elfs::mips32_elf()[18], 8); // EM_MIPS
+    assert_eq!(i66_elfs::x86_elf()[18], 3); // EM_386
+    assert_eq!(i66_elfs::arm_elf()[18], 40); // EM_ARM
+
+    let mut pool = pool_with_ida_on_path();
+
+    // (label, bytes, machine-ish, functions_expected_from_auto)
+    let cases: Vec<(&str, Vec<u8>, bool)> = vec![
+        ("mips32", i66_elfs::mips32_elf(), false),
+        ("x86", i66_elfs::x86_elf(), true),
+        ("arm", i66_elfs::arm_elf(), true),
+    ];
+
+    for (label, bytes, auto_recovers) in cases {
+        let dst = std::env::temp_dir().join(format!("reverse-mcp-it-66-{label}.elf"));
+        let _ = std::fs::remove_file(format!("{}.i64", dst.display()));
+        std::fs::write(&dst, &bytes).expect("write fixture");
+
+        let handle = open_idalib(&mut pool, dst.to_string_lossy().as_ref()).await;
+        let session = pool.session(&handle).await.expect("session");
+        let s = session.lock().await;
+
+        // db.info must carry the architecture diagnostics.
+        let info = s.call("db.info", json!({})).await.expect("db.info");
+        assert!(
+            info["processor"].as_str().is_some(),
+            "{label}: processor missing from db.info: {info}"
+        );
+        assert!(
+            info["entrypoints"].is_array() && info["executable_segments"].is_array(),
+            "{label}: arch diagnostics missing: {info}"
+        );
+        assert!(
+            info["analysis"].as_str().is_some(),
+            "{label}: analysis state missing: {info}"
+        );
+
+        let count = s
+            .call("analyze_wait", json!({}))
+            .await
+            .expect("analyze_wait");
+        let functions = count["functions"].as_u64().expect("functions");
+        // Every architecture must end with either functions or a precise
+        // machine-readable reason - silent 0-success is forbidden (issue #66).
+        let recovered = count["functions_recovered"].as_bool().unwrap_or(false);
+        let via = count["recovered_via"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        if functions == 0 {
+            assert!(
+                count["reason"].as_str().is_some(),
+                "{label}: zero functions without a reason: {count}"
+            );
+        } else if !auto_recovers {
+            // MIPS-class: functions only exist because of the recovery path.
+            assert!(
+                recovered || !via.is_empty(),
+                "{label}: functions present but no recovery provenance: {count}"
+            );
+        }
+
+        s.call("db.close", json!({})).await.expect("close");
+        drop(s);
+        pool.close(&handle).await.expect("close pool");
+        let _ = std::fs::remove_file(&dst);
+        let _ = std::fs::remove_file(format!("{}.i64", dst.display()));
+    }
+}
+
+/// Issue #66 Tier-B spot-check: when the local corpus is provisioned, the
+/// MIPS and ARM samples must both yield nontrivial analysis through the
+/// real backend (0-function silent success forbidden). Skipped silently
+/// when corpus_local is absent.
+#[tokio::test]
+#[ignore] // run explicitly with IDADIR pointing at a licensed IDA 9.2
+async fn real_ida_issue66_tier_b_spotcheck() {
+    let mozi =
+        "corpus_local/samples/3fce5bd5ba0c9b2241081a0fb85329fa02d66e2fd900f2555b2c4c4eb42be073.bin";
+    let mirai =
+        "corpus_local/samples/dc0013cb2fea70fe67141ab2eaee2b1dc688d6ebf2ceec97000867d25d51bc8d.bin";
+    if !(Path::new(mozi).exists() && Path::new(mirai).exists()) {
+        return; // corpus not provisioned on this machine; nothing to check
+    }
+
+    let mut pool = pool_with_ida_on_path();
+    for (label, src) in [("mips-mozi", mozi), ("arm-mirai", mirai)] {
+        let dst = std::env::temp_dir().join(format!("reverse-mcp-it-66-{label}.bin"));
+        let _ = std::fs::remove_file(format!("{}.i64", dst.display()));
+        std::fs::copy(src, &dst).expect("copy sample");
+
+        let handle = open_idalib(&mut pool, dst.to_string_lossy().as_ref()).await;
+        let session = pool.session(&handle).await.expect("session");
+        let s = session.lock().await;
+
+        let count = s
+            .call("analyze_wait", json!({}))
+            .await
+            .expect("analyze_wait");
+        let functions = count["functions"].as_u64().expect("functions");
+        assert!(
+            functions > 0,
+            "{label}: zero functions after recovery - silent empty success is forbidden: {count}"
+        );
+
+        // Functions must be listable with real disassembly-backed names.
+        let fns = s
+            .call("functions", json!({"offset": 0, "limit": 50}))
+            .await
+            .expect("functions");
+        let arr = fns.as_array().cloned().unwrap_or_default();
+        assert!(
+            !arr.is_empty(),
+            "{label}: function list empty though count={functions}"
+        );
+
+        s.call("db.close", json!({})).await.expect("close");
+        drop(s);
+        pool.close(&handle).await.expect("close pool");
+        let _ = std::fs::remove_file(&dst);
+        let _ = std::fs::remove_file(format!("{}.i64", dst.display()));
+    }
 }
