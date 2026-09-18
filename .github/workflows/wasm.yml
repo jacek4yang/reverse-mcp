@@ -52,21 +52,27 @@ jobs:
       # Differential oracles (optional, installed from release binaries so
       # no source build time is spent). Failure to install degrades the
       # differential tests to "skipped", never the whole job.
-      - name: Install wasm-tools (differential oracle)
+      - name: Install wasm-tools (differential oracle, optional)
+        shell: bash
         run: |
           # asset name pattern: wasm-tools-vX.Y.Z-x86_64-linux.tar.gz
-          VER=$(curl -sL https://api.github.com/repos/bytecodealliance/wasm-tools/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-          curl -sL "https://github.com/bytecodealliance/wasm-tools/releases/download/${VER}/wasm-tools-${VER}-x86_64-linux.tar.gz" -o /tmp/wt.tgz
-          mkdir -p /tmp/wt && tar -xzf /tmp/wt.tgz -C /tmp/wt
-          sudo find /tmp/wt -name wasm-tools -type f -exec install {} /usr/local/bin/ \;
+          set +e
+          VER=$(curl -sL https://api.github.com/repos/bytecodealliance/wasm-tools/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "latest tag: $VER"
+          curl -sL "https://github.com/bytecodealliance/wasm-tools/releases/download/${VER}/wasm-tools-${VER}-x86_64-linux.tar.gz" -o /tmp/wt.tgz || true
+          mkdir -p /tmp/wt && tar -xzf /tmp/wt.tgz -C /tmp/wt || true
+          sudo find /tmp/wt -name wasm-tools -type f -exec install {} /usr/local/bin/ \; || true
           wasm-tools --version || echo "wasm-tools unavailable; differential tests will skip"
 
-      - name: Install wabt (differential oracle)
+      - name: Install wabt (differential oracle, optional)
+        shell: bash
         run: |
-          VER=$(curl -sL https://api.github.com/repos/WebAssembly/wabt/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-          curl -sL "https://github.com/WebAssembly/wabt/releases/download/${VER}/wabt-${VER#v}-ubuntu.tar.gz" -o /tmp/wabt.tgz
-          mkdir -p /tmp/wabt && tar -xzf /tmp/wabt.tgz -C /tmp/wabt
-          sudo find /tmp/wabt -name wat2wasm -o -name wasm2wat -o -name wasm-objdump 2>/dev/null | xargs -r -I{} sudo install {} /usr/local/bin/
+          set +e
+          VER=$(curl -sL https://api.github.com/repos/WebAssembly/wabt/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "latest tag: $VER"
+          curl -sL "https://github.com/WebAssembly/wabt/releases/download/${VER}/wabt-${VER#v}-ubuntu.tar.gz" -o /tmp/wabt.tgz || true
+          mkdir -p /tmp/wabt && tar -xzf /tmp/wabt.tgz -C /tmp/wabt || true
+          sudo find /tmp/wabt \( -name wat2wasm -o -name wasm2wat -o -name wasm-objdump \) -type f -exec install {} /usr/local/bin/ \; || true
           wat2wasm --version || echo "wabt unavailable; differential tests will skip"
 
       - name: Encoding guard
