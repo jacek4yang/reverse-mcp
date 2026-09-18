@@ -1,4 +1,4 @@
-name: wasm
+﻿name: wasm
 
 # Issue #71: WASM semantic layer CI. Heavy builds/tests (corpus builds with
 # clang/rustc, wasmparser-based crate, differential tests) run here so local
@@ -54,18 +54,19 @@ jobs:
       # differential tests to "skipped", never the whole job.
       - name: Install wasm-tools (differential oracle)
         run: |
-          curl -sL https://github.com/bytecodealliance/wasm-tools/releases/latest/download/wasm-tools-x86_64-linux.tar.gz -o /tmp/wt.tgz
-          tar -xzf /tmp/wt.tgz -C /tmp
-          sudo install /tmp/wasm-tools-*/wasm-tools /usr/local/bin/wasm-tools
+          # asset name pattern: wasm-tools-vX.Y.Z-x86_64-linux.tar.gz
+          VER=$(curl -sL https://api.github.com/repos/bytecodealliance/wasm-tools/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          curl -sL "https://github.com/bytecodealliance/wasm-tools/releases/download/${VER}/wasm-tools-${VER}-x86_64-linux.tar.gz" -o /tmp/wt.tgz
+          mkdir -p /tmp/wt && tar -xzf /tmp/wt.tgz -C /tmp/wt
+          sudo find /tmp/wt -name wasm-tools -type f -exec install {} /usr/local/bin/ \;
           wasm-tools --version || echo "wasm-tools unavailable; differential tests will skip"
 
       - name: Install wabt (differential oracle)
         run: |
-          curl -sL https://github.com/WebAssembly/wabt/releases/latest/download/wabt-ubuntu.tar.gz -o /tmp/wabt.tgz
-          tar -xzf /tmp/wabt.tgz -C /tmp
-          sudo install /tmp/wabt-*/bin/wat2wasm /usr/local/bin/ || true
-          sudo install /tmp/wabt-*/bin/wasm2wat /usr/local/bin/ || true
-          sudo install /tmp/wabt-*/bin/wasm-objdump /usr/local/bin/ || true
+          VER=$(curl -sL https://api.github.com/repos/WebAssembly/wabt/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          curl -sL "https://github.com/WebAssembly/wabt/releases/download/${VER}/wabt-${VER#v}-ubuntu.tar.gz" -o /tmp/wabt.tgz
+          mkdir -p /tmp/wabt && tar -xzf /tmp/wabt.tgz -C /tmp/wabt
+          sudo find /tmp/wabt -name wat2wasm -o -name wasm2wat -o -name wasm-objdump 2>/dev/null | xargs -r -I{} sudo install {} /usr/local/bin/
           wat2wasm --version || echo "wabt unavailable; differential tests will skip"
 
       - name: Encoding guard
