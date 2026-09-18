@@ -12,7 +12,10 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
-$env:PATH = "D:\Applications\Scoop\persist\rustup-msvc\.cargo\bin;$env:SystemRoot\system32;$env:SystemRoot"
+# Toolchain comes from PATH (never a machine-specific absolute path).
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+    throw "soak: cargo not found on PATH; install the Rust toolchain first"
+}
 
 $deadline = (Get-Date).AddHours($Hours)
 $runs = 0
