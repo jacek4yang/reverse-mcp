@@ -194,9 +194,11 @@ unsafe extern "C" fn preload_ida_dlls() {
 }
 
 #[cfg(not(windows))]
-fn dup_stdin() -> std::io::Result<io::Stdin> {
+fn dup_stdin() -> std::io::Result<BufReader<io::Stdin>> {
     // Non-Windows has no delay-load stdio hazard; use plain stdin.
-    Ok(io::stdin())
+    // Both platforms return a BufRead for FrameReader; wrapping here keeps
+    // the call site platform-agnostic.
+    Ok(BufReader::new(io::stdin()))
 }
 
 #[cfg(not(windows))]
