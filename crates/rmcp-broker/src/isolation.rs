@@ -284,12 +284,12 @@ pub async fn run_isolated(
         },
     };
 
-    finish(&mut guard, &final_outcome);
+    finish(&mut guard, &final_outcome).await;
     drop(permit);
     Ok(final_outcome)
 }
 
-fn finish(guard: &mut DisposableGuard, o: &DisposableOutcome) {
+async fn finish(guard: &mut DisposableGuard, o: &DisposableOutcome) {
     match o {
         DisposableOutcome::Ok(_) | DisposableOutcome::BadResponse { .. } => {
             iso_stats().exited_clean.fetch_add(1, Ordering::Relaxed);
@@ -303,5 +303,5 @@ fn finish(guard: &mut DisposableGuard, o: &DisposableOutcome) {
     }
     guard.accounted = true;
     // A disposable worker is never reused and never left running.
-    guard.kill_tree();
+    guard.kill_tree().await;
 }

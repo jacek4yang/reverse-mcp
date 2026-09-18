@@ -212,17 +212,24 @@ fn dedup_sorted(v: &[String]) -> Vec<String> {
 
 /// Entry blocks: have a pred outside the set (or no preds). Exit blocks:
 /// have a succ outside the set (or no succs).
-fn entry_exit_blocks(idx: &CfgIndex, blocks: &[usize]) -> (Vec<u64>, Vec<u64>) {
+fn entry_exit_blocks(
+    idx: &CfgIndex,
+    blocks: &[usize],
+) -> (Vec<u64>, Vec<u64>) {
     let set: std::collections::BTreeSet<usize> = blocks.iter().copied().collect();
     let mut entry = Vec::new();
     let mut exit = Vec::new();
     for &b in blocks {
-        let has_external_pred = idx.succs[b].iter().any(|_| false)
-            || (0..idx.block_eas.len())
-                .any(|p| set.contains(&p) == false && idx.succs[p].contains(&b));
+        let external_pred = idx
+            .succs
+            .iter()
+            .enumerate()
+            .filter(|(p, _)| !set.contains(p))
+            .any(|(_, ss)| ss.contains(&b));
         let has_external_succ = idx.succs[b].iter().any(|s| !set.contains(s));
-        let isolated = !idx.succs[b].iter().any(|s| set.contains(s)) && !has_external_pred;
-        if has_external_pred || isolated || blocks.len() == 1 {
+        let internal_succ = idx.succs[b].iter().any(|s| set.contains(s));
+        let isolated = !internal_succ && !external_pred;
+        if external_pred || isolated || blocks.len() == 1 {
             entry.push(idx.block_eas[b]);
         }
         if has_external_succ || idx.succs[b].is_empty() {
@@ -254,10 +261,9 @@ mod tests {
     #[test]
     fn linear_chain_partitions_into_bounded_chunks() {
         // 100 blocks in a chain -> 2 chunks of 64.
-        let mut succs = vec![vec![]; 100];
-        for i in 0..99 {
-            succs[i] = vec![i + 1];
-        }
+        let succs: Vec<Vec<usize>> = (0..100)
+            .map(|i| if i < 99 { vec![i + 1] } else { vec![] })
+            .collect();
         let idx = idx_from(succs);
         let p = partition(&idx, &PartitionOptions::default());
         assert_eq!(p.regions.len(), 2);
@@ -289,12 +295,12 @@ mod tests {
     #[test]
     fn dispatcher_scc_flagged() {
         // 10-node SCC -> dispatcher.
-        let n = 12;
-        let mut succs = vec![vec![]; n];
-        for i in 0..10 {
-            succs[i] = vec![(i + 1) % 10]; // ring 0..10
-        }
-        succs[9].push(10);
+        let mut succs: Vec<Vec<usize>> = (0..10)
+            .map(|i| vec![(i + 1) % 10])
+            .collect();
+        succs.push(vec![]);
+        succs.push(vec![]);
+        succs[9] = vec![0, 10]; // ring close + exit edge
         succs[10] = vec![11];
         let idx = idx_from(succs);
         let p = partition(&idx, &PartitionOptions::default());

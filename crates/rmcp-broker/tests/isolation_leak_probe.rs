@@ -51,8 +51,7 @@ fn count_worker_processes() -> usize {
             .output()
             .expect("powershell probe");
         let text = String::from_utf8_lossy(&out.stdout);
-        let count = text.matches(&want).count();
-        count
+        text.matches(&want).count()
     }
     #[cfg(not(windows))]
     {
@@ -72,7 +71,7 @@ fn count_worker_processes() -> usize {
 
 /// The disposable-worker semaphore is process-wide; tests touching it must
 /// run serially or they will starve each other's spawns.
-static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn db_fixture() -> String {
     // Any small file works for a mock-backend open (CI-safe, no IDA needed).
@@ -83,7 +82,7 @@ fn db_fixture() -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn leak_probe_spawn_kill_cycles_leave_nothing() {
-    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = TEST_LOCK.lock().await;
     if !worker_exe().exists() {
         // The integration environment always ships the exe beside tests.
         return;
@@ -129,7 +128,7 @@ async fn leak_probe_spawn_kill_cycles_leave_nothing() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn hard_timeout_kills_and_reports() {
-    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = TEST_LOCK.lock().await;
     if !worker_exe().exists() {
         return;
     }
@@ -155,7 +154,7 @@ async fn hard_timeout_kills_and_reports() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cap_rejects_excess_concurrency() {
-    let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = TEST_LOCK.lock().await;
     if !worker_exe().exists() {
         return;
     }
