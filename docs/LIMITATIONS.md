@@ -191,19 +191,28 @@ under "Shipped" does not work yet.
   `hr.cfunc` lvars; renaming a lvar that shares its defea with another lvar
   (e.g. two args keyed to the entry) may rename the matching locator slot
   rather than a specific one.
-- Windows x86_64 verified only. Linux/macOS paths exist in discovery and
-  DotSlash pinfiles cover linux-x86_64/macos-x86_64/macos-aarch64, but no
-  real-IDA runtime test has passed there — platform support is claimed only
-  from tested facts (expansion tracked in #48).
+- Windows x86_64 verified only. Linux/macOS discovery paths and DotSlash
+  pinfiles exist, and platform OS specifics are now isolated behind
+  `rmcp_core::platform` (path separators, runtime library names, python-home
+  dirname, worker exe naming — unit-tested with per-OS expectations), but no
+  real-IDA runtime test has passed there yet — platform support is claimed
+  only from tested facts. CI carries a Linux job (build + mock suite +
+  adapter unit tests) as allowed-to-fail until a real Linux IDA install
+  validates the gated acceptance suite; it then flips to required (#48).
 - Windows x86_64 + IDA 9.2 production status (#57): the full real-IDA gated
-  suite (19 tests incl. hostile-corpus and malformed-input liveness), a
+  suite (21 tests incl. hostile-corpus, malformed-input liveness and the
+  cross-arch recovery tests), a
   60-second lifecycle soak gate (12h/24h via scripts/soak.ps1 for release
   sign-off) and the release checklist (docs/RELEASE_CHECKLIST.md) are part
   of the Windows release gate. The result store is janitor-swept with a
   hard entry cap; worker startup is hello-frame timeout bounded.
 - One verified backend version: 9.2 (pinned in the backend registry with
   SDK commit + FFI/generator versions + ABI probe facts). Other installed
-  IDA versions are discovered and reported as `backend unavailable`.
+  IDA versions are discovered and reported as `backend unavailable`; since
+  #48 a strict `ida_version=<x>` selection fails with a capability error
+  naming the verified keys instead of silently handing back an install no
+  backend can drive. macOS (aarch64) remains explicitly unverified (#48
+  stretch goal) — adapter-ready only, no runtime claims.
 - The ABI probe verifies `backends/abi/expected-9_2.json` against the real
   SDK headers locally; public CI verifies only the JSON structure and the
   Rust-side mirrors, not the proprietary headers.

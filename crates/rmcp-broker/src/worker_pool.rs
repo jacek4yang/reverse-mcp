@@ -131,7 +131,8 @@ impl WorkerPool {
     /// whether the configured/discovered IDA dir actually contains the runtime
     /// DLLs so the message can distinguish "no install" from "install broken".
     fn diagnose_dead_worker(ida_dir: Option<&std::path::Path>) -> Error {
-        let dlls = ["ida.dll", "idalib.dll"];
+        let dlls = rmcp_core::platform::runtime_libraries();
+        let libs_word = if cfg!(windows) { "DLLs" } else { "libraries" };
         let hint = match ida_dir {
             Some(dir) => {
                 let missing: Vec<&str> = dlls
@@ -141,20 +142,20 @@ impl WorkerPool {
                     .collect();
                 if missing.is_empty() {
                     format!(
-                        "IDA runtime DLLs found in {} but the worker still died at startup; \
+                        "IDA runtime {libs_word} found in {} but the worker still died at startup; \
                          verify the install is complete and matches this build",
                         dir.display()
                     )
                 } else {
                     format!(
-                        "IDA runtime DLLs missing from {}: {}; \
+                        "IDA runtime {libs_word} missing from {}: {}; \
                          set IDADIR or add the IDA install dir to PATH",
                         dir.display(),
                         missing.join(", ")
                     )
                 }
             }
-            None => "IDA runtime DLLs not found on PATH; \
+            None => "IDA runtime libraries not found on PATH; \
                      set IDADIR or add the IDA install dir to PATH"
                 .to_string(),
         };
@@ -193,11 +194,7 @@ impl WorkerPool {
         if let Ok(cur) = std::env::current_exe() {
             candidates.push(cur);
         }
-        let sibling = if cfg!(windows) {
-            "reverse-mcp.exe"
-        } else {
-            "reverse-mcp"
-        };
+        let sibling = rmcp_core::platform::worker_exe_name();
         candidates.push(exe_dir.join(sibling));
         if let Some(parent) = exe_dir.parent() {
             candidates.push(parent.join(sibling));
@@ -243,8 +240,11 @@ impl WorkerPool {
             .or_else(|| std::env::var("IDADIR").ok().map(PathBuf::from));
         if let Some(dir) = ida_dir {
             cmd.env("REVERSE_MCP_IDA_DIR", &dir);
-            let path = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", format!("{};{}", dir.display(), path));
+            let path = std::env::var(rmcp_core::platform::path_env()).unwrap_or_default();
+            cmd.env(
+                rmcp_core::platform::path_env(),
+                rmcp_core::platform::prepend_path(&dir, &path),
+            );
         }
         cmd
     }
@@ -352,13 +352,16 @@ impl WorkerPool {
         cmd.arg("worker");
         if let Some(dir) = &ida_dir {
             cmd.env("REVERSE_MCP_IDA_DIR", dir);
-            // The worker links ida.dll/idalib.dll; add the IDA dir to PATH so
+            // The worker links the IDA runtime; add the IDA dir to PATH so
             // the loader resolves them without a system-wide PATH entry.
-            let path = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", format!("{};{}", dir.display(), path));
+            let path = std::env::var(rmcp_core::platform::path_env()).unwrap_or_default();
+            cmd.env(
+                rmcp_core::platform::path_env(),
+                rmcp_core::platform::prepend_path(dir, &path),
+            );
             // IDA's embedded Python needs a home or its init fails and the
             // worker dies; point it at the interpreter bundled with IDA.
-            let pyhome = dir.join("Python311");
+            let pyhome = dir.join(rmcp_core::platform::python_home_dirname());
             if pyhome.is_dir() {
                 cmd.env("PYTHONHOME", &pyhome);
             }

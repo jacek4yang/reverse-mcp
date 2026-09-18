@@ -1066,15 +1066,37 @@ pub fn resolve_with(
         });
     }
 
-    // Prefer backend-ready installs; fall back only when the requirement
-    // is satisfied by no ready install (agents see backend status in
-    // ida_installations and can decide explicitly).
+    // Prefer backend-ready installs. When the requirement is satisfied by
+    // no ready install, fall back to the highest-version match only for the
+    // legacy "latest" (auto-select) flow; a strict `ida_version=<x>` must
+    // fail honestly instead of handing back an install that no verified
+    // backend can drive (#48).
     let best = matching
         .iter()
         .filter(|i| i.backend_ready())
-        .max_by_key(|i| i.version)
-        .or_else(|| matching.iter().max_by_key(|i| i.version));
-    Ok((*best.unwrap()).clone())
+        .max_by_key(|i| i.version);
+    let best = match best {
+        Some(b) => Some(*b),
+        None if requirement.latest => matching.iter().max_by_key(|i| i.version).copied(),
+        None => None,
+    };
+    let best = best.ok_or_else(|| {
+        let available = matching
+            .iter()
+            .map(|i| format!("IDA {} ({}), backend: {:?}", i.version, i.root.display(), i.backend))
+            .collect::<Vec<_>>()
+            .join("; ");
+        Error::CapabilityUnavailable {
+            capability: "idalib".into(),
+            reason: format!(
+                "requirement '{}' matched {} but no verified backend ships for it (verified: {}); pick another version or extend the backend registry",
+                requirement_display(requirement),
+                available,
+                crate::backend_registry::verified_keys().join(", "),
+            ),
+        }
+    })?;
+    Ok(best.clone())
 }
 
 fn requirement_display(r: &IdaRequirement) -> String {
@@ -1345,4 +1367,96 @@ mod tests {
         assert!(validate(&tmp, DiscoverySource::CommonPaths, None).is_err());
         let _ = std::fs::remove_dir_all(&tmp);
     }
+}
+
+// ---- Issue #48: platform/version expansion ----
+
+/// Issue #48: a directory named with a 9.3 version hint and populated with
+/// real runtime-library files must be discovered with version 9.3 and
+/// honestly gated to `backend unavailable` until a verified backend ships.
+/// Uses mock dirs (only runtime files are created - no proprietary bytes).
+#[test]
+fn issue48_next_version_discovery_gating() {
+    let tmp = std::env::temp_dir().join("rmcp-i48-idaver");
+    let v93 = tmp.join("IDA Professional 9.3");
+    let _ = std::fs::remove_dir_all(&v93);
+    std::fs::create_dir_all(&v93).unwrap();
+
+    // Create the two runtime files discovery requires (empty files are
+    // enough: validation is by presence; the version comes from the name).
+    std::fs::write(v93.join("ida.dll"), b"").unwrap();
+    std::fs::write(v93.join("idalib.dll"), b"").unwrap();
+
+    let inst = validate(&v93, DiscoverySource::CommonPaths, None).expect("validate 9.3 dir");
+    assert_eq!(inst.version, Version::new(9, 3, 0), "name-hint version");
+    assert_eq!(
+        inst.backend,
+        BackendStatus::Unavailable,
+        "9.3 has no verified backend yet; must be honestly unavailable"
+    );
+
+    // Resolution for "9.3" must fail with the version-mismatch class while
+    // no verified backend exists - never silently pick a different install.
+    let req = IdaRequirement::parse("9.3").unwrap();
+    let all = discover_all(Some(&v93));
+    assert!(
+        all.iter().any(|i| i.version == Version::new(9, 3, 0)),
+        "9.3 dir must be discoverable"
+    );
+    let resolved = resolve_with(Some(&v93), &req);
+    match resolved {
+        // Honest capability-unavailable (registry-driven) is the expected
+        // contract while 9_3 is unverified.
+        Err(e) => assert!(
+            e.code() == "ida_version_mismatch"
+                || e.code() == "ida_not_found"
+                || e.code() == "capability_unavailable",
+            "unexpected error for unverified 9.3: {e}"
+        ),
+        // Only acceptable on a machine where a real 9.3 with a verified
+        // backend exists (not the case while 9_3 is unverified).
+        Ok(i) => panic!(
+            "9.3 resolved despite no verified backend: {}",
+            i.root.display()
+        ),
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// Issue #48: range requirements pin correctly across mixed installs.
+/// Two mock installs (9.2 + 9.3): ">=9.2,<9.4" resolves the 9.3 one (higher
+/// version in range) only if it is backend-ready - which it is not - so the
+/// resolver must fall back to the 9.2 install instead. Mixed-version
+/// sessions (one worker per DB) are covered by real_ida_two_dbs_concurrent.
+#[test]
+fn issue48_range_resolution_prefers_backend_ready() {
+    let tmp = std::env::temp_dir().join("rmcp-i48-range");
+    let _ = std::fs::remove_dir_all(&tmp);
+    let v92 = tmp.join("IDA Professional 9.2");
+    let v93 = tmp.join("IDA Professional 9.3");
+    std::fs::create_dir_all(&v92).unwrap();
+    std::fs::create_dir_all(&v93).unwrap();
+    for d in [&v92, &v93] {
+        std::fs::write(d.join("ida.dll"), b"").unwrap();
+        std::fs::write(d.join("idalib.dll"), b"").unwrap();
+    }
+
+    // With an explicit root pointing at the 9.3 dir, ">=9.2,<9.4" must NOT
+    // yield a backend-ready install (9.3 has none) - resolution errors.
+    let req = IdaRequirement::parse(">=9.2,<9.4").unwrap();
+    let res = resolve_with(Some(&v93), &req);
+    if let Ok(inst) = &res {
+        // Only acceptable if a verified 9_3 backend exists by now.
+        assert!(
+            crate::backend_registry::is_verified("9_3"),
+            "9.3 resolved while unverified: {}",
+            inst.root.display()
+        );
+    }
+    // And pointing at 9.2 must resolve backend-ready.
+    let inst = resolve_with(Some(&v92), &req).expect("9.2 must resolve");
+    assert_eq!(inst.backend, BackendStatus::Ready);
+
+    let _ = std::fs::remove_dir_all(&tmp);
 }

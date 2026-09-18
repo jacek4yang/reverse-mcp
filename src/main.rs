@@ -248,6 +248,39 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
         );
     }
 
+    // Platform matrix (#48): per-OS/per-version verification status sourced
+    // from the backend registry and the build host — tested facts only.
+    {
+        let host_os = if cfg!(target_os = "windows") {
+            "windows"
+        } else if cfg!(target_os = "macos") {
+            "macos"
+        } else {
+            "linux"
+        };
+        let host_arch = if cfg!(target_arch = "x86_64") {
+            "x86_64"
+        } else {
+            "other"
+        };
+        let registry = rmcp_core::backend_registry::VERIFIED_BACKENDS
+            .iter()
+            .map(|m| {
+                format!(
+                    "{}({})",
+                    m.key,
+                    if m.verified { "verified" } else { "unverified" }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        println!(
+            "platform matrix: host={host_os}-{host_arch}; registry backends: {registry}; \
+             windows-9.2-x86_64: real-IDA suite verified; linux/macos: adapter-ready, \
+             real-IDA acceptance pending (allowed-to-fail CI)"
+        );
+    }
+
     // Rust toolchain pinning.
     match std::fs::read_to_string("rust-toolchain.toml").or_else(|_| {
         std::fs::read_to_string(rmcp_core::layout::exe_dir().join("rust-toolchain.toml"))
