@@ -65,10 +65,17 @@ async fn soak_gate_60s_lifecycle_cycles() {
             let s = pool.session(&h1).await.expect("s1");
             let pid = s.lock().await.hello().pid;
             drop(s);
-            let _ = std::process::Command::new("taskkill")
-                .args(["/F", "/PID", &pid.to_string()])
-                .output()
-                .expect("taskkill");
+            // Kill the child by PID per-OS (taskkill on Windows, kill -9 on
+            // Unix - #48 Linux CI).
+            if cfg!(windows) {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string()])
+                    .output();
+            } else {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &pid.to_string()])
+                    .output();
+            }
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
             assert_eq!(
                 pool.health(&h1).await.unwrap(),
