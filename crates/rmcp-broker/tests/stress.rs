@@ -183,15 +183,23 @@ async fn crash_under_load_recovers() {
         s.call("db.info", json!({})).await.expect("info");
     }
 
-    // Kill the db1 worker child (crash, not shutdown).
+    // Kill the db1 worker child (crash, not shutdown). Per-OS kill
+    // (taskkill on Windows, kill -9 on Unix - #48 Linux CI).
     {
         let s = pool.session(&h1).await.expect("s1");
         let pid = s.lock().await.hello().pid;
-        let status = std::process::Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
-            .output()
-            .expect("taskkill");
-        assert!(status.status.success(), "taskkill failed: {status:?}");
+        let status = if cfg!(windows) {
+            std::process::Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output()
+                .expect("taskkill")
+        } else {
+            std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output()
+                .expect("kill")
+        };
+        assert!(status.status.success(), "kill failed: {status:?}");
     }
     // Give the pump time to observe EOF and flip the state.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
