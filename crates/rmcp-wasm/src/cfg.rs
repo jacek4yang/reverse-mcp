@@ -1,4 +1,4 @@
-﻿//! Structured control-flow recovery (#71 搂3): CFG that preserves WASM's
+//! Structured control-flow recovery (#71 搂3): CFG that preserves WASM's
 //! structured block/loop/if nesting instead of flattening it into a
 //! native-style graph. Each block carries its identity; `br`/`br_if`/
 //! `br_table` edges resolve to the innermost matching label with provenance.

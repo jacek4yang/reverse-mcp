@@ -1,5 +1,5 @@
-﻿//! Ground-truth tests for the WASM semantic layer (#71 acceptance):
-//! module model, structured CFG, SSA, indirect calls, pseudocode 鈥?//! all against a hand-written WAT fixture with exact known facts.
+//! Ground-truth tests for the WASM semantic layer (#71 acceptance):
+//! module model, structured CFG, SSA, indirect calls, pseudocode ?//! all against a hand-written WAT fixture with exact known facts.
 
 use rmcp_wasm::calls::{resolve_indirect, Confidence};
 use rmcp_wasm::cfg::{analyze_body, BlockKind};

@@ -1,4 +1,4 @@
-﻿//! Bounded WASM module parser producing the normalized module model (#71 搂2).
+//! Bounded WASM module parser producing the normalized module model (#71 搂2).
 //!
 //! Uses `wasmparser` (Bytecode Alliance) as the embedded parser. Decoding is
 //! budgeted: a hostile/deeply-nested module fails locally with a diagnostic

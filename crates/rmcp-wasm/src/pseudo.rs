@@ -1,4 +1,4 @@
-﻿//! WASM-native C-like pseudocode (#71 搂7): deterministic, evidence-backed,
+//! WASM-native C-like pseudocode (#71 搂7): deterministic, evidence-backed,
 //! built from the structured CFG + SSA layers. Explicitly NOT Hex-Rays
 //! output and never labeled as such.
 

@@ -1,4 +1,4 @@
-﻿//! Operand-stack-to-SSA value analysis (#71 搂4): a bounded single-pass
+//! Operand-stack-to-SSA value analysis (#71 搂4): a bounded single-pass
 //! abstract interpreter over the function body that produces SSA names,
 //! use-def chains, and constant facts. Never executes the module.
 

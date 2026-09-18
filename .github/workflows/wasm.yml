@@ -1,4 +1,4 @@
-﻿name: wasm
+name: wasm
 
 # Issue #71: WASM semantic layer CI. Heavy builds/tests (corpus builds with
 # clang/rustc, wasmparser-based crate, differential tests) run here so local
