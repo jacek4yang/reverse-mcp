@@ -76,9 +76,7 @@ pub fn resolve_indirect(
                     .iter()
                     .filter(|s| &s.table_index == table_index)
                     .find(|s| {
-                        s.offset
-                            .map(|o| o <= *idx)
-                            .unwrap_or(false)
+                        s.offset.map(|o| o <= *idx).unwrap_or(false)
                             && (idx - s.offset.unwrap()) < s.func_indices.len() as u64
                     });
                 match covering {

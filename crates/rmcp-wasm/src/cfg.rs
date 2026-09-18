@@ -13,7 +13,9 @@ pub enum BlockKind {
     Function,
     Block,
     Loop,
-    If { has_else: bool },
+    If {
+        has_else: bool,
+    },
     /// try/try_table when the exception-handling proposal is present.
     Try,
 }
@@ -143,20 +145,21 @@ pub fn analyze_body(body: &[u8]) -> Result<StructuredCfg> {
                 });
                 stack.push(id);
                 open_regions.push((id, pos));
-                cfg.diagnostics
-                    .push(format!("try construct at {pos:#x}: exception-handling proposal"));
+                cfg.diagnostics.push(format!(
+                    "try construct at {pos:#x}: exception-handling proposal"
+                ));
             }
             Br { relative_depth } => match cfg.resolve_label(&stack, relative_depth) {
                 Some(t) => record_branch(&mut cfg, t, pos),
-                None => cfg
-                    .diagnostics
-                    .push(format!("br at {pos:#x}: depth {relative_depth} out of range")),
+                None => cfg.diagnostics.push(format!(
+                    "br at {pos:#x}: depth {relative_depth} out of range"
+                )),
             },
             BrIf { relative_depth } => match cfg.resolve_label(&stack, relative_depth) {
                 Some(t) => record_branch(&mut cfg, t, pos),
-                None => cfg
-                    .diagnostics
-                    .push(format!("br_if at {pos:#x}: depth {relative_depth} out of range")),
+                None => cfg.diagnostics.push(format!(
+                    "br_if at {pos:#x}: depth {relative_depth} out of range"
+                )),
             },
             BrTable { targets: ref br } => {
                 let mut resolved = vec![];
@@ -211,8 +214,9 @@ pub fn analyze_body(body: &[u8]) -> Result<StructuredCfg> {
     // Regions never closed = malformed nesting (bounded diagnostic).
     let unclosed = stack.len();
     if unclosed > 1 {
-        cfg.diagnostics
-            .push(format!("{unclosed} region(s) left unclosed at function end"));
+        cfg.diagnostics.push(format!(
+            "{unclosed} region(s) left unclosed at function end"
+        ));
     }
     Ok(cfg)
 }

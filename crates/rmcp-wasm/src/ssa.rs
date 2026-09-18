@@ -173,7 +173,11 @@ pub fn analyze_values(body: &[u8], n_params: usize) -> Result<SsaBody> {
             I32Load { memarg } | I64Load { memarg } => {
                 let width = matches!(op, I32Load { .. }).then_some(4).unwrap_or(8);
                 let addr = pop_use!();
-                def_val!(if width == 4 { "i32" } else { "i64" }, format!("load +{}", memarg.offset), None);
+                def_val!(
+                    if width == 4 { "i32" } else { "i64" },
+                    format!("load +{}", memarg.offset),
+                    None
+                );
                 if let Some(a) = addr {
                     out.memory_ops.push((pos, a, width, false));
                 }

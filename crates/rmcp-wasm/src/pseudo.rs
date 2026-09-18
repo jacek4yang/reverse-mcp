@@ -4,9 +4,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::Result;
 use crate::cfg::StructuredCfg;
 use crate::module::ModuleModel;
-use crate::Result;
 
 /// Render pseudocode for one function.
 ///
@@ -57,8 +57,7 @@ pub fn render(
 
     // Straight rendering of the structured semantics - NOT a native-style
     // CFG flattening; block/loop/if nesting maps to braces.
-    let mut ops =
-        wasmparser::OperatorsReader::new(wasmparser::BinaryReader::new(body, 0));
+    let mut ops = wasmparser::OperatorsReader::new(wasmparser::BinaryReader::new(body, 0));
     let mut indent = 1usize;
     let mut estack: Vec<String> = vec![];
     let mut names: BTreeMap<u32, String> = BTreeMap::new();
@@ -159,10 +158,7 @@ pub fn render(
             I32LtU => binop(&mut estack, "<u"),
             I32GeU => binop(&mut estack, ">=u"),
             Block { .. } => {
-                out.push_str(&format!(
-                    "{}{{ // block @ {pos:#x}\n",
-                    "  ".repeat(indent)
-                ));
+                out.push_str(&format!("{}{{ // block @ {pos:#x}\n", "  ".repeat(indent)));
                 indent += 1;
             }
             Loop { .. } => {

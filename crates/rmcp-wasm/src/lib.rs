@@ -36,7 +36,10 @@ pub enum Error {
     #[error("wasm parse failed at offset {offset}: {message}")]
     Parse { offset: u64, message: String },
     #[error("feature '{feature}' not enabled in this module: {message}")]
-    FeatureDisabled { feature: &'static str, message: String },
+    FeatureDisabled {
+        feature: &'static str,
+        message: String,
+    },
     #[error("budget exhausted: {0}")]
     Budget(&'static str),
     #[error("analysis ambiguous: {0}")]

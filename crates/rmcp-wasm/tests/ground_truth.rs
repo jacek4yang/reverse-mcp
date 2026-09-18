@@ -1,9 +1,9 @@
 //! Ground-truth tests for the WASM semantic layer (#71 acceptance):
 //! module model, structured CFG, SSA, indirect calls, pseudocode ?//! all against a hand-written WAT fixture with exact known facts.
 
-use rmcp_wasm::calls::{resolve_indirect, Confidence};
-use rmcp_wasm::cfg::{analyze_body, BlockKind};
-use rmcp_wasm::module::{parse, ModuleModel};
+use rmcp_wasm::calls::{Confidence, resolve_indirect};
+use rmcp_wasm::cfg::{BlockKind, analyze_body};
+use rmcp_wasm::module::{ModuleModel, parse};
 use rmcp_wasm::pseudo::render;
 use rmcp_wasm::ssa::analyze_values;
 
@@ -117,7 +117,11 @@ fn structured_cfg_preserves_nesting() {
     assert_eq!(loops, 1, "one loop");
     assert_eq!(blocks, 2, "block + the implicit if-block region");
     // The loop's parent is the block.
-    let loop_r = cfg.regions.iter().find(|r| r.kind == BlockKind::Loop).unwrap();
+    let loop_r = cfg
+        .regions
+        .iter()
+        .find(|r| r.kind == BlockKind::Loop)
+        .unwrap();
     let block_r = cfg
         .regions
         .iter()
@@ -201,7 +205,10 @@ fn pseudocode_deterministic_and_labeled() {
     let p2 = render(&m, 4, body, &cfg).expect("pseudo");
     assert_eq!(p1, p2, "deterministic output");
     assert!(p1.contains("not Hex-Rays"), "must be labeled: {p1}");
-    assert!(p1.contains("do {") || p1.contains("loop"), "structured: {p1}");
+    assert!(
+        p1.contains("do {") || p1.contains("loop"),
+        "structured: {p1}"
+    );
     assert!(p1.contains("goto label_m"), "br rendering: {p1}");
 }
 

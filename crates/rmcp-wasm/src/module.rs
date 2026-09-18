@@ -340,22 +340,22 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
             GlobalSection(r) => {
                 for (index, g) in r.into_iter().enumerate() {
                     let g = g.map_err(perr)?;
-                    let init = g
-                        .init_expr
-                        .get_operators_reader()
-                        .read()
-                        .ok()
-                        .and_then(|op| match op {
-                            wasmparser::Operator::I32Const { value } => Some(value.to_string()),
-                            wasmparser::Operator::I64Const { value } => Some(value.to_string()),
-                            wasmparser::Operator::F32Const { value } => {
-                                Some(f32::from_bits(value.bits()).to_string())
-                            }
-                            wasmparser::Operator::F64Const { value } => {
-                                Some(f64::from_bits(value.bits()).to_string())
-                            }
-                            _ => None,
-                        });
+                    let init =
+                        g.init_expr
+                            .get_operators_reader()
+                            .read()
+                            .ok()
+                            .and_then(|op| match op {
+                                wasmparser::Operator::I32Const { value } => Some(value.to_string()),
+                                wasmparser::Operator::I64Const { value } => Some(value.to_string()),
+                                wasmparser::Operator::F32Const { value } => {
+                                    Some(f32::from_bits(value.bits()).to_string())
+                                }
+                                wasmparser::Operator::F64Const { value } => {
+                                    Some(f64::from_bits(value.bits()).to_string())
+                                }
+                                _ => None,
+                            });
                     model.globals.push(GlobalEntry {
                         index: index as u32,
                         ty: g.ty.content_type.to_string(),
@@ -466,9 +466,10 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                     model.custom.name_section = true;
                     // Bounded name-section walk: the function-name subsection
                     // maps function indices to names.
-                    let reader = wasmparser::NameSectionReader::new(
-                        wasmparser::BinaryReader::new(c.data(), c.data_offset()),
-                    );
+                    let reader = wasmparser::NameSectionReader::new(wasmparser::BinaryReader::new(
+                        c.data(),
+                        c.data_offset(),
+                    ));
                     for sub in reader {
                         let sub = match sub {
                             Ok(s) => s,
