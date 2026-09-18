@@ -178,8 +178,10 @@ cargo test --release -p reverse-mcp --features idalib --test idalib_real -- --ig
 # ABI probe: verify SDK layouts against backends/abi/expected-9_2.json
 pwsh scripts/run-abi-probe.ps1
 
-# reproducible benchmark (mock mode; add --real-ida locally with IDADIR set)
+# reproducible benchmark (mock mode in CI; --real-ida runs agent scenarios
+# through a real licensed IDA 9.2 backend, fails closed without one)
 cargo run --release -p reverse-mcp -- bench
+cargo run --release -p reverse-mcp --features idalib -- bench --real-ida --json
 ```
 
 Note: the `--features idalib` build statically imports `ida.dll`/`idalib.dll`,

@@ -217,14 +217,19 @@ under "Shipped" does not work yet.
   SDK headers locally; public CI verifies only the JSON structure and the
   Rust-side mirrors, not the proprietary headers.
 - `revision` is per-worker-process memory: it does not survive close/reopen.
+- The benchmark's revision-keyed workflow cache is per worker session: a
+  re-opened database (new worker process) re-runs scenarios from scratch;
+  `bench --real-ida` therefore asserts caching within one session, across
+  two full scenario passes.
 - `ida_batch` is read-only by design.
 
 ## Roadmap (see open issues for current order)
 
-Tracked as GitHub issues (#43–#50): microcode-level transforms (#43),
-value/register analysis (#44), block-level binary diff (#45), deobfuscation
-transforms with rollback (#46), external rule packs (#47), platform/version
-expansion (#48), real-IDA benchmark suite (#50). Items below are landed and
+Landed since v0.1.0: value/register analysis (#44), external rule packs
+(#47), platform/version expansion (#48), real-IDA benchmark suite (#50,
+`reverse-mcp bench --real-ida`). Still open: microcode-level transforms
+(#43), block-level binary diff (#45), deobfuscation transforms with
+rollback (#46). Items below are landed and
 kept for history:
 
 1. ~~Real types support and real IDB byte patching~~ (landed: #19/#16).
@@ -233,6 +238,6 @@ kept for history:
 3. ~~Streamable HTTP transport (loopback default) + multi-agent stress tests~~
    (landed: #15, `serve --http`).
 4. ~~DotSlash toolchain + ABI probe~~ (landed: #17).
-5. Docs polish, release pipeline, `v0.1.0` artifact
-   (`reverse-mcp-v0.1.0-windows-x86_64.zip` + SHA-256), gated on the local
-   real-IDA acceptance chain (release pipeline itself still open).
+5. ~~Docs polish, release pipeline, `v0.1.0` artifact
+   (`reverse-mcp-v0.1.0-windows-x86_64.zip` + SHA-256)~~ (landed: #17; the
+   v1.0.0 production artifact supersedes it, see docs/RELEASE_CHECKLIST.md).

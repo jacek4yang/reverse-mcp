@@ -2,7 +2,15 @@
 
 Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
-35 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
+35 tools. `reverse-mcp bench` runs a reproducible task benchmark for
+regression gating (issue #18): mock mode in CI, plus `--real-ida` mode that
+drives the same agent-facing scenarios (one-call context, deep chain walk,
+timeout→resume) through a real licensed IDA 9.2 backend via idalib — doctor-style
+hard failure with no mock fallback when no verified backend resolves,
+`cached: true` asserted on the in-session repeat of every repeatable
+scenario, single-decompile enforced via `visited_count`, and p50/p95
+latency reported but never asserted (issue #50); see
+docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.

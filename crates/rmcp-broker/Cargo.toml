@@ -19,7 +19,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
-rmcp-broker = { path = ".", version = "0.1.0" }
+rmcp-broker = { path = ".", version = "1.0.0" }
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "client", "client-legacy", "http1"] }
 http-body-util = "0.1"
