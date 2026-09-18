@@ -843,12 +843,12 @@ fn os_native_candidates() -> Vec<(PathBuf, Option<String>)> {
             if let Ok(entries) = std::fs::read_dir(&apps) {
                 for e in entries.flatten() {
                     let name = e.file_name().to_string_lossy().into_owned();
-                    if name.to_lowercase().contains("ida") && name.ends_with(".desktop") {
-                        if let Some(exec) = parse_desktop_exec(&e.path()) {
-                            if let Some(dir) = PathBuf::from(&exec).parent() {
-                                out.push((dir.to_path_buf(), Some(name)));
-                            }
-                        }
+                    if name.to_lowercase().contains("ida")
+                        && name.ends_with(".desktop")
+                        && let Some(exec) = parse_desktop_exec(&e.path())
+                        && let Some(dir) = PathBuf::from(&exec).parent()
+                    {
+                        out.push((dir.to_path_buf(), Some(name)));
                     }
                 }
             }
@@ -1181,19 +1181,24 @@ struct CacheEntry {
 }
 
 fn drive_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
+    // On Windows the roots are discovered dynamically (drive letters); on
+    // other platforms a single root suffices. Structured so each cfg branch
+    // returns its own vec (clippy::vec_init_then_push on Linux).
     #[cfg(windows)]
     {
+        let mut roots = Vec::new();
         for letter in b'A'..=b'Z' {
             let root = PathBuf::from(format!(r"{}:\", letter as char));
             if root.is_dir() {
                 roots.push(root);
             }
         }
+        roots
     }
     #[cfg(not(windows))]
-    roots.push(PathBuf::from("/"));
-    roots
+    {
+        vec![PathBuf::from("/")]
+    }
 }
 
 /// Public for the `scan_debug` example; not part of the library API.
