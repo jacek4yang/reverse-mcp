@@ -1,0 +1,91 @@
+name: wasm
+
+# Issue #71: WASM semantic layer CI. Heavy builds/tests (corpus builds with
+# clang/rustc, wasmparser-based crate, differential tests) run here so local
+# machines only need light incremental work. Static analysis only: no sample
+# is ever executed; no network during tests.
+
+on:
+  push:
+    branches: [main, "feat/wasm*"]
+    paths:
+      - "crates/rmcp-wasm/**"
+      - "crates/rmcp-worker/**"
+      - "crates/rmcp-broker/**"
+      - "crates/rmcp-core/**"
+      - "tests/**"
+      - "tests/fixtures/wasm/**"
+      - ".github/workflows/wasm.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/rmcp-wasm/**"
+      - ".github/workflows/wasm.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (pinned by rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Add wasm32 targets (corpus rebuilds + parser tests)
+        run: rustup target add wasm32-unknown-unknown wasm32-wasip1
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-cargo-
+
+      # Differential oracles (optional, installed from release binaries so
+      # no source build time is spent). Failure to install degrades the
+      # differential tests to "skipped", never the whole job.
+      - name: Install wasm-tools (differential oracle)
+        run: |
+          curl -sL https://github.com/bytecodealliance/wasm-tools/releases/latest/download/wasm-tools-x86_64-linux.tar.gz -o /tmp/wt.tgz
+          tar -xzf /tmp/wt.tgz -C /tmp
+          sudo install /tmp/wasm-tools-*/wasm-tools /usr/local/bin/wasm-tools
+          wasm-tools --version || echo "wasm-tools unavailable; differential tests will skip"
+
+      - name: Install wabt (differential oracle)
+        run: |
+          curl -sL https://github.com/WebAssembly/wabt/releases/latest/download/wabt-ubuntu.tar.gz -o /tmp/wabt.tgz
+          tar -xzf /tmp/wabt.tgz -C /tmp
+          sudo install /tmp/wabt-*/bin/wat2wasm /usr/local/bin/ || true
+          sudo install /tmp/wabt-*/bin/wasm2wat /usr/local/bin/ || true
+          sudo install /tmp/wabt-*/bin/wasm-objdump /usr/local/bin/ || true
+          wat2wasm --version || echo "wabt unavailable; differential tests will skip"
+
+      - name: Encoding guard
+        run: python3 -X utf8 scripts/check-encoding.py
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings, includes rmcp-wasm)
+        run: cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker -p rmcp-wasm --all-targets -- -D warnings
+
+      - name: Build WASM corpus (pinned fixtures, no network)
+        run: cargo run --release -p rmcp-wasm --bin build_corpus -- --check
+
+      - name: WASM crate unit tests (parser/CFG/SSA/calls/pseudocode)
+        run: cargo test -p rmcp-wasm
+
+      - name: Full workspace mock tests (regression guard)
+        run: cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
+
+      - name: WASM differential validation (vs wasm-tools/wabt, when present)
+        run: cargo test -p rmcp-wasm --test differential -- --ignored
+        continue-on-error: false
