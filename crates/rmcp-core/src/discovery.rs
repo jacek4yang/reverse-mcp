@@ -1389,8 +1389,10 @@ fn issue48_next_version_discovery_gating() {
 
     // Create the two runtime files discovery requires (empty files are
     // enough: validation is by presence; the version comes from the name).
-    std::fs::write(v93.join("ida.dll"), b"").unwrap();
-    std::fs::write(v93.join("idalib.dll"), b"").unwrap();
+    // Filenames come from the platform adapter / discovery runtime_paths
+    // so the test holds on every OS.
+    std::fs::write(v93.join(crate::platform::runtime_libraries()[0]), b"").unwrap();
+    std::fs::write(v93.join(crate::platform::runtime_libraries()[1]), b"").unwrap();
 
     let inst = validate(&v93, DiscoverySource::CommonPaths, None).expect("validate 9.3 dir");
     assert_eq!(inst.version, Version::new(9, 3, 0), "name-hint version");
@@ -1443,8 +1445,8 @@ fn issue48_range_resolution_prefers_backend_ready() {
     std::fs::create_dir_all(&v92).unwrap();
     std::fs::create_dir_all(&v93).unwrap();
     for d in [&v92, &v93] {
-        std::fs::write(d.join("ida.dll"), b"").unwrap();
-        std::fs::write(d.join("idalib.dll"), b"").unwrap();
+        std::fs::write(d.join(crate::platform::runtime_libraries()[0]), b"").unwrap();
+        std::fs::write(d.join(crate::platform::runtime_libraries()[1]), b"").unwrap();
     }
 
     // With an explicit root pointing at the 9.3 dir, ">=9.2,<9.4" must NOT
