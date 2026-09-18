@@ -46,7 +46,7 @@ self-modifying malware.
 
 ### Platform
 - Windows x86_64: production (real-IDA gated suite, hostile-input corpus,
-  60s/12h/24h soak gates).
+  Tier-A/Tier-B acceptance, real-IDA benchmark, 60s/12h/24h soak gates).
 - Linux: adapter-ready, CI build/mock job green, real-IDA acceptance
   pending (#48). macOS: explicitly unverified.
 

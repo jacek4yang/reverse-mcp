@@ -42,17 +42,29 @@ but *unverified* until #48 lands; do not claim support in release notes.
 ## 4. Artifact
 - [ ] `powershell -File scripts\release.ps1` — runs gates 1 + 4–8 and
       produces:
-      - `target/release/reverse-mcp.exe`
-      - `target/release/reverse-mcp.exe.sha256` (SHA-256)
+      - `target/release/reverse-mcp-v1.0.0-windows-x86_64.zip`
+        (exe + minimal docs only; forbidden-pattern guard rejects IDA
+        proprietary files, keys, corpora, or any second binary)
+      - `target/release/reverse-mcp-v1.0.0-windows-x86_64.zip.sha256`
+- [ ] The release build is the idalib-ENABLED artifact:
+      `cargo build --release -p reverse-mcp --features idalib` (the script
+      refuses to package a mock-only artifact via
+      `reverse-mcp worker --probe-backend idalib`).
 - [ ] Record the hash + build command (`cargo build --release -p
-      reverse-mcp`, toolchain pinned by `rust-toolchain.toml`) in the
-      release notes; the build is reproducible from the tag.
-- [ ] Smoke the artifact on a clean PATH machine:
-      `reverse-mcp doctor`, `reverse-mcp ida list`, open a DB over stdio.
+      reverse-mcp --features idalib`, toolchain pinned by
+      `rust-toolchain.toml`) in the release notes; the build is
+      reproducible from the tag.
+- [ ] Smoke the artifact from a clean extraction directory:
+      verify SHA-256, `reverse-mcp version`, `reverse-mcp doctor`,
+      `reverse-mcp ida list`, start a stdio MCP session, open a real
+      database through the public MCP surface (open/info/functions/
+      decompile/close), confirm clean shutdown with no orphan workers.
+- [ ] `LICENSE` ships in the package (MIT, `Cargo.toml`
+      `workspace.package.license`).
 
 ## 5. Documentation claims (exact wording)
 - [ ] README support line: "Windows x86_64 + IDA Pro 9.2: production
-      supported." Nothing stronger.
+      supported and real-IDA tested." Nothing stronger.
 - [ ] LIMITATIONS platform section matches this claim.
 - [ ] Known unverified items listed (Linux/macOS, other IDA versions,
       packed-sample coverage limits).

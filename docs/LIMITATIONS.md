@@ -199,13 +199,14 @@ under "Shipped" does not work yet.
   only from tested facts. CI carries a Linux job (build + mock suite +
   adapter unit tests) as allowed-to-fail until a real Linux IDA install
   validates the gated acceptance suite; it then flips to required (#48).
-- Windows x86_64 + IDA 9.2 production status (#57): the full real-IDA gated
-  suite (21 tests incl. hostile-corpus, malformed-input liveness and the
-  cross-arch recovery tests), a
-  60-second lifecycle soak gate (12h/24h via scripts/soak.ps1 for release
-  sign-off) and the release checklist (docs/RELEASE_CHECKLIST.md) are part
-  of the Windows release gate. The result store is janitor-swept with a
-  hard entry cap; worker startup is hello-frame timeout bounded.
+- Windows x86_64 + IDA 9.2 production status (#57/#69): the full real-IDA
+  gated suite (21 tests incl. hostile-corpus, malformed-input liveness and
+  the cross-arch recovery tests), Tier-A logic acceptance and Tier-B
+  malware acceptance, the real-IDA benchmark (`bench --real-ida`), a
+  60-second lifecycle soak gate and the 12h/24h soak gates
+  (scripts/soak.ps1) and the release checklist (docs/RELEASE_CHECKLIST.md)
+  are part of the Windows release gate. The result store is janitor-swept
+  with a hard entry cap; worker startup is hello-frame timeout bounded.
 - One verified backend version: 9.2 (pinned in the backend registry with
   SDK commit + FFI/generator versions + ABI probe facts). Other installed
   IDA versions are discovered and reported as `backend unavailable`; since
