@@ -23,11 +23,19 @@ async fn kill_worker_child(pool: &WorkerPool, db: &str) {
     // the child process by PID (hello.pid) via taskkill (Windows).
     let pid = s.hello().pid;
     drop(s);
-    let status = std::process::Command::new("taskkill")
-        .args(["/F", "/PID", &pid.to_string()])
-        .output()
-        .expect("taskkill");
-    assert!(status.status.success(), "taskkill failed: {status:?}");
+    // Kill the child by PID: taskkill on Windows, kill on Unix (#48 Linux CI).
+    let status = if cfg!(windows) {
+        std::process::Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .output()
+            .expect("taskkill")
+    } else {
+        std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .expect("kill")
+    };
+    assert!(status.status.success(), "kill failed: {status:?}");
 }
 
 #[tokio::test]
