@@ -82,12 +82,7 @@ pub(crate) mod win {
 
     unsafe extern "system" {
         fn CreateJobObjectW(attrs: *mut c_void, name: *const u16) -> HANDLE;
-        fn SetInformationJobObject(
-            job: HANDLE,
-            cls: i32,
-            info: *mut c_void,
-            len: u32,
-        ) -> i32;
+        fn SetInformationJobObject(job: HANDLE, cls: i32, info: *mut c_void, len: u32) -> i32;
         fn AssignProcessToJobObject(job: HANDLE, proc: HANDLE) -> i32;
         fn TerminateJobObject(job: HANDLE, exit_code: u32) -> i32;
         fn CloseHandle(h: HANDLE) -> i32;

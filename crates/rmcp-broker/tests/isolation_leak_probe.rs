@@ -63,7 +63,10 @@ fn count_worker_processes() -> usize {
             ])
             .output()
             .expect("ps probe");
-        String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0)
     }
 }
 
@@ -87,7 +90,9 @@ async fn leak_probe_spawn_kill_cycles_leave_nothing() {
     }
     let exe = worker_exe();
     let db = db_fixture();
-    let before = iso_stats().spawned.load(std::sync::atomic::Ordering::Relaxed);
+    let before = iso_stats()
+        .spawned
+        .load(std::sync::atomic::Ordering::Relaxed);
 
     const CYCLES: usize = 5;
     for i in 0..CYCLES {
@@ -106,9 +111,14 @@ async fn leak_probe_spawn_kill_cycles_leave_nothing() {
         }
     }
 
-    let spawned_now =
-        iso_stats().spawned.load(std::sync::atomic::Ordering::Relaxed) - before;
-    assert_eq!(spawned_now, CYCLES as u64, "spawn counter must match cycles");
+    let spawned_now = iso_stats()
+        .spawned
+        .load(std::sync::atomic::Ordering::Relaxed)
+        - before;
+    assert_eq!(
+        spawned_now, CYCLES as u64,
+        "spawn counter must match cycles"
+    );
 
     // The leak line: after all cycles, no worker processes remain.
     // Give the OS a moment to finish reaping.
@@ -176,15 +186,15 @@ async fn cap_rejects_excess_concurrency() {
             Ok(_) => ok += 1,
             Err(e) => {
                 let msg = e.to_string();
-                assert!(
-                    msg.contains("cap"),
-                    "unexpected error flavor: {msg}"
-                );
+                assert!(msg.contains("cap"), "unexpected error flavor: {msg}");
                 rejected += 1;
             }
         }
     }
-    assert!(rejected >= 2, "cap must reject excess: ok={ok} rejected={rejected}");
+    assert!(
+        rejected >= 2,
+        "cap must reject excess: ok={ok} rejected={rejected}"
+    );
 
     // After everything completes, no processes leak.
     tokio::time::sleep(Duration::from_millis(500)).await;

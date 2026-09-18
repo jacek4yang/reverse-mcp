@@ -16,8 +16,8 @@
 //! - spawn/kill/timeout counts live in [`iso_stats`], surfaced by
 //!   `ida_health`; the leak probe asserts the ledger balances.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -44,17 +44,14 @@ pub enum DisposableOutcome {
     /// Worker answered within the budget.
     Ok(Value),
     /// Hard timeout: the process tree was killed; primary session untouched.
-    Timeout { after: Duration, stage: &'static str },
+    Timeout {
+        after: Duration,
+        stage: &'static str,
+    },
     /// Worker died mid-run (Hex-Rays crash, OOM, loader failure).
-    Crashed {
-        detail: String,
-        stage: &'static str,
-    },
+    Crashed { detail: String, stage: &'static str },
     /// Worker answered with a structured error (not a crash).
-    BadResponse {
-        detail: String,
-        stage: &'static str,
-    },
+    BadResponse { detail: String, stage: &'static str },
 }
 
 static ISO_STATS: std::sync::OnceLock<IsoStats> = std::sync::OnceLock::new();
@@ -245,9 +242,7 @@ pub async fn run_isolated(
                 .read::<WorkerResponse>()
                 .await
                 .map_err(|e| Error::Worker(format!("frame error: {e}")))?
-                .ok_or_else(|| {
-                    Error::Worker("disposable worker died mid-sequence".into())
-                })?;
+                .ok_or_else(|| Error::Worker("disposable worker died mid-sequence".into()))?;
             if let Some(e) = r.error {
                 return Err(Error::Worker(format!(
                     "{}: {} {}",
@@ -275,25 +270,18 @@ pub async fn run_isolated(
         }
         Ok(Err(e)) => {
             let detail = e.to_string();
-            let stage = if detail.starts_with("backend.select:")
-                || detail.starts_with("db.open:")
-            {
+            let stage = if detail.starts_with("backend.select:") || detail.starts_with("db.open:") {
                 "open"
             } else {
                 "risky"
             };
-            DisposableOutcome::BadResponse {
-                detail,
-                stage,
-            }
+            DisposableOutcome::BadResponse { detail, stage }
         }
         Ok(Ok(Some(v))) => DisposableOutcome::Ok(v),
-        Ok(Ok(None)) => {
-            DisposableOutcome::BadResponse {
-                detail: "no response".into(),
-                stage: "risky",
-            }
-        }
+        Ok(Ok(None)) => DisposableOutcome::BadResponse {
+            detail: "no response".into(),
+            stage: "risky",
+        },
     };
 
     finish(&mut guard, &final_outcome);

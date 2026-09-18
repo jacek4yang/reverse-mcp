@@ -21,11 +21,14 @@ use tokio::sync::Mutex;
 use rmcp_core::config::Config;
 use rmcp_core::result_store::ResultStore;
 
+pub mod dataflow;
 pub mod isolation;
 pub mod job_object;
 pub mod jobs;
+pub mod preflight;
 pub mod prompts;
 pub mod recovery;
+pub mod regions;
 pub mod registry;
 pub mod resources;
 pub mod tools;
