@@ -9,5 +9,6 @@ pub mod discovery;
 pub mod error;
 pub mod handle;
 pub mod layout;
+pub mod platform;
 pub mod protocol;
 pub mod result_store;

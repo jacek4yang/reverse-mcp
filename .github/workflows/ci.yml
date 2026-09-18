@@ -67,3 +67,40 @@ jobs:
       - name: Distribution check (no proprietary material)
         shell: pwsh
         run: ./scripts/check-distribution.ps1
+
+  # Issue #48: Linux platform adapter build + mock suite. Allowed to fail
+  # until a real Linux IDA install is available for the gated real-IDA
+  # acceptance suite; flips to required then (tested-facts policy).
+  linux:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (pinned by rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker --all-targets -- -D warnings
+
+      - name: Tests (mock backend, no IDA required)
+        run: cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
+
+      - name: Platform adapter unit tests (per-OS expectations)
+        run: cargo test -p rmcp-core platform
+        continue-on-error: true

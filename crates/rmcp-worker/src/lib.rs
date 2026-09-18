@@ -150,6 +150,8 @@ unsafe extern "C" fn preload_ida_dlls() {
     let np = unsafe { GetEnvironmentVariableW(path_var.as_ptr(), old_path.as_mut_ptr(), 32768) };
     if (np as usize) < old_path.len() {
         let mut new_path: Vec<u16> = dir.to_vec();
+        // Platform separator: ';' on Windows (this constructor only runs
+        // there); rmcp_core::platform keeps the single source of truth.
         new_path.push(u16::from(b';'));
         new_path.extend_from_slice(&old_path[..np as usize]);
         new_path.push(0);
@@ -192,9 +194,11 @@ unsafe extern "C" fn preload_ida_dlls() {
 }
 
 #[cfg(not(windows))]
-fn dup_stdin() -> std::io::Result<io::Stdin> {
+fn dup_stdin() -> std::io::Result<BufReader<io::Stdin>> {
     // Non-Windows has no delay-load stdio hazard; use plain stdin.
-    Ok(io::stdin())
+    // Both platforms return a BufRead for FrameReader; wrapping here keeps
+    // the call site platform-agnostic.
+    Ok(BufReader::new(io::stdin()))
 }
 
 #[cfg(not(windows))]

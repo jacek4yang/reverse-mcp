@@ -41,7 +41,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | multi-client | implemented (stdio + HTTP, shared broker) | n/a (stdio only) | partial | partial | partial | n/a | n/a | n/a | n/a |
 | crash recovery | implemented (bounded restart, real-IDA tested) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | token/output controls | implemented (budgets, spill, ranking everywhere) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| cross-platform/multi-version | partial (Windows real-IDA tested; version discovery) | multi-platform | Windows | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform |
+| cross-platform/multi-version | partial (Windows 9.2 real-IDA tested; multi-version discovery with honest registry gating; OS specifics behind `rmcp_core::platform` adapter, Linux CI mock job; Linux/macOS real-IDA acceptance pending #48) | multi-platform | Windows | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform |
 | worker probe hardening | implemented (re-entrancy guard + IDA-dir-aware probe, PR #26) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | reproducible benchmark | implemented (`reverse-mcp bench`, mock mode; real-IDA mode tracked in #50) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
@@ -54,4 +54,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 - Strict/relaxed signature policy with conflict detection before any rename.
 
 ## Explicit follow-ups (competitor advantages not yet matched)
-Tracked as GitHub issues: 1→#43, 2→#45, 3→#47, 5→#48.
+Tracked as GitHub issues: 1→#43, 2→#45, 3→#47. Follow-up 5 (#48,
+non-Windows real-IDA verification) is in progress: the platform adapter is
+landed and CI carries a Linux mock job; full closure requires the gated
+real-IDA suite to pass on Linux/macOS installs (tested facts only).
