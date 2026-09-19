@@ -4,7 +4,7 @@
 
 use serde_json::{Value, json};
 
-use rmcp::ErrorData as McpError;
+pub(crate) use rmcp::ErrorData as McpError;
 
 use crate::{Broker, arg_str, arg_u64, bound_output, resolve_db};
 
@@ -1286,7 +1286,7 @@ fn mcp_code(code: &str, message: &str) -> McpError {
 }
 
 /// Parse an EA from hex (0x- or decimal.
-fn parse_ea(v: &Value) -> Option<u64> {
+pub(crate) fn parse_ea(v: &Value) -> Option<u64> {
     if let Some(s) = v.as_str() {
         let s = s.trim();
         if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {

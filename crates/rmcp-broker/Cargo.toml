@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 rmcp = { version = "3.3.0", features = ["server", "transport-io", "transport-child-process", "transport-streamable-http-server", "client"] }
 rmcp-core = { path = "../rmcp-core", features = ["tokio-async"] }
+rmcp-wasm = { path = "../rmcp-wasm" }
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "service", "http1"] }
 tower = { version = "0.5", features = ["util"] }

@@ -318,19 +318,41 @@ impl IdaBackend for IdaLibBackend {
         let mut out = Vec::new();
         let mut ea = ea_start;
         while ea < max_ea && out.len() < max_insns {
+            // i71a hardening: IDA's WASM processor produces op_t.type values
+            // outside our OperandType range for `br_if <depth>` - touching
+            // the operand (or the label-rendering disassembly line) panics
+            // the worker (repro: audit_minimal.wasm @0xb2). Detect br_if
+            // from the raw byte, render depth from the raw LEB128 operand
+            // byte, and never touch IDA operand rendering for that EA.
+            let raw: Vec<u8> = idb.get_bytes(ea, 2);
+            let is_wasm_br_if = raw.first() == Some(&0x0d);
             let Some(insn) = idb.insn_at(ea) else { break };
-            let text = unsafe { idalib::ffi::backend::idalib_disasm_line(into_ea(ea)) };
-            let operands = (0..insn.operand_count())
-                .map(|i| operand_text(&insn, i))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let text = if is_wasm_br_if {
+                let depth = raw.get(1).copied().unwrap_or(0);
+                format!("br_if {depth}")
+            } else {
+                unsafe { idalib::ffi::backend::idalib_disasm_line(into_ea(ea)) }
+            };
+            let operands = if is_wasm_br_if {
+                String::new()
+            } else {
+                (0..insn.operand_count())
+                    .map(|i| operand_text(&insn, i))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             out.push(InsnInfo {
                 ea,
                 mnemonic: mnemonic_of(&text),
                 operands,
                 text,
             });
-            ea += insn.len() as u64;
+            // Zero-length decode would loop forever; treat as undecodable.
+            let step = insn.len();
+            if step == 0 {
+                break;
+            }
+            ea += step as u64;
         }
         Ok(out)
     }

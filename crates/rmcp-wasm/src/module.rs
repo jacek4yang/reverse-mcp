@@ -194,6 +194,24 @@ fn perr(e: wasmparser::BinaryReaderError) -> Error {
 }
 
 /// Parse a full WASM binary into the model. `bytes` is the whole file.
+
+/// Record one section's byte range in the model (bounded).
+fn record_section(model: &mut ModuleModel, id: u8, name: &str, range: std::ops::Range<usize>) {
+    if model.sections.len() < model_max_sections() {
+        model.sections.push(SectionInfo {
+            id,
+            name: name.to_string(),
+            offset: range.start as u64,
+            size: (range.end - range.start) as u64,
+        });
+    }
+}
+
+fn model_max_sections() -> usize {
+    4096 // mirrors ParseBudget::default().max_sections
+}
+
+
 pub fn parse(bytes: &[u8]) -> Result<ModuleModel> {
     parse_with_budget(bytes, &ParseBudget::default())
 }
@@ -224,6 +242,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
         match payload {
             Version { .. } => {}
             TypeSection(r) => {
+                record_section(&mut model, 1, "type", r.range());
                 for group in r {
                     let group = group.map_err(perr)?;
                     for sub in group.types() {
@@ -261,6 +280,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             ImportSection(r) => {
+                record_section(&mut model, 2, "import", r.range());
                 for imp in r {
                     let imp = imp.map_err(perr)?;
                     let (kind, tidx) = match imp.ty {
@@ -286,6 +306,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             FunctionSection(r) => {
+                record_section(&mut model, 3, "function", r.range());
                 for (i, t) in r.into_iter().enumerate() {
                     let t = t.map_err(perr)?;
                     if model.functions.len() >= budget.max_functions {
@@ -302,6 +323,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             TableSection(r) => {
+                record_section(&mut model, 4, "table", r.range());
                 for (index, t) in r.into_iter().enumerate() {
                     let t = t.map_err(perr)?;
                     if wasmparser::ValType::Ref(t.ty.element_type).is_reference_type() {
@@ -316,6 +338,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             MemorySection(r) => {
+                record_section(&mut model, 5, "memory", r.range());
                 for (index, m) in r.into_iter().enumerate() {
                     let m = m.map_err(perr)?;
                     if index >= 1 {
@@ -338,6 +361,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             GlobalSection(r) => {
+                record_section(&mut model, 6, "global", r.range());
                 for (index, g) in r.into_iter().enumerate() {
                     let g = g.map_err(perr)?;
                     let init =
@@ -365,6 +389,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             ExportSection(r) => {
+                record_section(&mut model, 7, "export", r.range());
                 for e in r {
                     let e = e.map_err(perr)?;
                     let kind = match e.kind {
@@ -385,6 +410,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 model.start = Some(func);
             }
             ElementSection(r) => {
+                record_section(&mut model, 9, "elem", r.range());
                 for (index, e) in r.into_iter().enumerate() {
                     let e = e.map_err(perr)?;
                     if model.elements.len() >= budget.max_elements {
@@ -412,6 +438,9 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                     model.elements.push(seg);
                 }
             }
+            CodeSectionStart { range, .. } => {
+                record_section(&mut model, 10, "code", range);
+            }
             CodeSectionEntry(f) => {
                 let entry = model
                     .functions
@@ -433,6 +462,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 defined_fn_cursor += 1;
             }
             DataSection(r) => {
+                record_section(&mut model, 11, "data", r.range());
                 for (index, d) in r.into_iter().enumerate() {
                     let d = d.map_err(perr)?;
                     if model.datas.len() >= budget.max_datas {
@@ -458,6 +488,7 @@ pub fn parse_with_budget(bytes: &[u8], budget: &ParseBudget) -> Result<ModuleMod
                 }
             }
             TagSection(r) => {
+                record_section(&mut model, 13, "tag", r.range());
                 for _ in r {}
                 feature.exception_handling = true;
             }
