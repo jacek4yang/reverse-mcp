@@ -44,7 +44,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | token/output controls | implemented (budgets, spill, ranking everywhere) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | cross-platform/multi-version | partial (Windows 9.2 real-IDA tested; multi-version discovery with honest registry gating; OS specifics behind `rmcp_core::platform` adapter, Linux CI mock job; Linux/macOS real-IDA acceptance pending #48) | multi-platform | Windows | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform | multi-platform |
 | worker probe hardening | implemented (re-entrancy guard + IDA-dir-aware probe, PR #26) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| reproducible benchmark | implemented (`reverse-mcp bench`, mock mode; real-IDA mode tracked in #50) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| reproducible benchmark | implemented (`reverse-mcp bench` mock mode in CI + `--real-ida` mode against a licensed IDA 9.2 backend: agent-scenario round trips, revision-keyed cache verification, single-decompile enforcement, timeout→resume completion; p50/p95 reported, never asserted) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
 ## Where reverse-mcp takes a different approach
 - One-call composite workflows (#8) instead of many atomic calls: the agent

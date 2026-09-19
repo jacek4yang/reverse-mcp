@@ -108,8 +108,10 @@ manifests, ABI-probe status, and discovered installs.
 
 ## Prerequisites
 
-- Windows x86_64: production supported with IDA Pro 9.2 (real-IDA gated
-  suite, hostile-input corpus and soak gate all green). Linux/macOS:
+- Windows x86_64: production supported with IDA Pro 9.2 — production
+  supported and real-IDA tested (real-IDA gated suite, hostile-input
+  corpus, Tier-A/Tier-B acceptance, real-IDA benchmark and soak gates all
+  green). Linux/macOS:
   architecture-supported, real-IDA acceptance pending (#48) — OS specifics
   are isolated behind the unit-tested `rmcp_core::platform` adapter, and CI
   runs a Linux build/mock job (allowed-to-fail until an install validates
@@ -178,8 +180,10 @@ cargo test --release -p reverse-mcp --features idalib --test idalib_real -- --ig
 # ABI probe: verify SDK layouts against backends/abi/expected-9_2.json
 pwsh scripts/run-abi-probe.ps1
 
-# reproducible benchmark (mock mode; add --real-ida locally with IDADIR set)
+# reproducible benchmark (mock mode in CI; --real-ida runs agent scenarios
+# through a real licensed IDA 9.2 backend, fails closed without one)
 cargo run --release -p reverse-mcp -- bench
+cargo run --release -p reverse-mcp --features idalib -- bench --real-ida --json
 ```
 
 Note: the `--features idalib` build statically imports `ida.dll`/`idalib.dll`,

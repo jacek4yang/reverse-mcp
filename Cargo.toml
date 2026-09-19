@@ -24,7 +24,7 @@ name = "reverse-mcp"
 path = "src/main.rs"
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/jacek4yang/reverse-mcp"
@@ -47,7 +47,7 @@ idalib = ["rmcp-worker/idalib", "dep:idalib", "dep:idalib-build"]
 idalib-build = { path = "vendor/idalib-build", optional = true }
 
 [dependencies]
-rmcp-broker = { version = "0.1.0", path = "crates/rmcp-broker" }
+rmcp-broker = { version = "1.0.0", path = "crates/rmcp-broker" }
 rmcp-core = { path = "crates/rmcp-core" }
 rmcp-worker = { path = "crates/rmcp-worker" }
 serde_json = "1"
