@@ -126,11 +126,11 @@ async fn wasm_db_full_chain() {
 async fn wasm_ida_wasm_tool_actions() {
     // ida_wasm through the real registry: fused parser + IDA facts.
     use rmcp_broker::Broker;
-    use std::sync::Arc;
-
     let _ = worker_exe();
-    let mut config = rmcp_core::config::Config::default();
-    config.max_workers = 2;
+    let config = rmcp_core::config::Config {
+        max_workers: 2,
+        ..Default::default()
+    };
     let broker = Broker::new(config);
     if let Ok(ida) = std::env::var("IDADIR") {
         broker.pool.lock().await.set_ida_dir(PathBuf::from(ida));
