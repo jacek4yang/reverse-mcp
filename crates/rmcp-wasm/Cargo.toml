@@ -1,0 +1,18 @@
+[package]
+name = "rmcp-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Issue #71: bounded Rust-native WebAssembly semantic analysis - parser, normalized module model, structured CFG, SSA/value analysis, indirect-call resolution, evidence-backed pseudocode. Static analysis only; never executes WASM."
+
+[dependencies]
+rmcp-core = { path = "../rmcp-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+wasmparser = "0.239"
+wat = "1.239"
+
+[dev-dependencies]
+wasm-encoder = "0.239"

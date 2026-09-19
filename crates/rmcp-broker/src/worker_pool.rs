@@ -189,6 +189,14 @@ impl WorkerPool {
         if let Some(p) = &self.worker_exe {
             return Ok(p.clone());
         }
+        // Env override (tests / exotic layouts): an explicit worker exe wins.
+        if let Ok(p) = std::env::var("REVERSE_MCP_WORKER_EXE") {
+            let p = PathBuf::from(p);
+            if p.is_file() {
+                self.worker_exe = Some(p.clone());
+                return Ok(p);
+            }
+        }
         let exe_dir = rmcp_core::layout::exe_dir();
         let mut candidates: Vec<PathBuf> = Vec::new();
         if let Ok(cur) = std::env::current_exe() {
@@ -222,6 +230,16 @@ impl WorkerPool {
         let msg = "no worker-capable exe found (expected reverse-mcp with `worker` subcommand)";
         self.worker_exe_error = Some(msg.to_string());
         Err(Error::Worker(msg.to_string()))
+    }
+
+    /// The resolved worker exe path (None if resolution has not run).
+    pub fn resolved_worker_exe(&self) -> Option<PathBuf> {
+        self.worker_exe.clone()
+    }
+
+    /// The resolved IDA dir, if any.
+    pub fn resolved_ida_dir(&self) -> Option<PathBuf> {
+        self.ida_dir.clone()
     }
 
     pub fn set_ida_dir(&mut self, dir: PathBuf) {

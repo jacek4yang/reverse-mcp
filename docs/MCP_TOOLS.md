@@ -2,7 +2,8 @@
 
 Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
-35 tools. `reverse-mcp bench` runs a reproducible task benchmark for
+
+36 tools. `reverse-mcp bench` runs a reproducible task benchmark for
 regression gating (issue #18): mock mode in CI, plus `--real-ida` mode that
 drives the same agent-facing scenarios (one-call context, deep chain walk,
 timeout→resume) through a real licensed IDA 9.2 backend via idalib — doctor-style
@@ -11,6 +12,7 @@ hard failure with no mock fallback when no verified backend resolves,
 scenario, single-decompile enforced via `visited_count`, and p50/p95
 latency reported but never asserted (issue #50); see
 docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
+
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -128,6 +130,21 @@ unavailable), `imagebase`, `entry_count` + `entries` (ordinal/ea/name), plus
 honest `tls_callbacks_supported:false` / `exception_handlers_supported:false`
 fields (not exposed by the SDK surface used).
 
+### ida_wasm
+WebAssembly analysis (#71). Fuses the IDA-native WASM loader facts with the
+independent rmcp-wasm parser (wasmparser-based, bounded, static-only).
+`action=info`: module model overview + feature map + cross-engine checks
+(function counts, code-offset mapping). Query actions: `sections`/`types`/
+`imports` (with WASI grouping)/`exports`/`functions` (fused index-space rows
+with per-row name provenance: parser/ida)/`globals`/`tables`/`memories`/
+`elements`/`datas`. `action=cfg`: structured control flow (block/loop/if
+preserved, never flattened) for one function by wasm `index`.
+`action=pseudocode`: deterministic WASM-native C-like rendering - explicitly
+NOT Hex-Rays (IDA has no WASM decompiler). `action=indirect_targets`:
+evidence-backed `call_indirect` resolution (confirmed/candidate/unresolved,
+never fabricated certainty). Malformed modules fail locally with bounded
+diagnostics. See docs/WASM_ANALYSIS.md.
+
 ### ida_imports
 Imported modules with entries (`ea`, `name`, `ordinal`); `module` selects one
 index, `offset`/`limit` paginate.
@@ -234,6 +251,22 @@ Workflows:
   adds bounded snippets per function.
 - `trace_call_path` - call path from a function to a target (`target_ea`),
   BFS over caller edges; `found: false` when no route exists within `depth`.
+- `function_hierarchical` (#72) - hierarchical large-function analysis:
+  complexity preflight (blocks/edges/SCCs, no Hex-Rays) classifies
+  normal|large|pathological; normal keeps the whole-function path, while
+  large/pathological functions are partitioned into virtual CFG regions and
+  analyzed per-region in disposable isolation workers (Hex-Rays failures
+  degrade to raw-IDA evidence; true hard timeout; primary session never at
+  risk). Overview-first: mode, complexity facts, per-region outcomes,
+  `analysis_status`, `hexrays_failures`, resumable `resume.frontier`,
+  dataflow summary, isolation ledger. Budgets: `max_regions` (1..256,
+  default 16), `hard_timeout_ms` (5000..1800000, default 120000). See
+  `docs/LARGE_FUNCTION_ANALYSIS.md`.
+- `function_region` (#72) - drill into one region from a hierarchical
+  overview (`ea` + `region_id`): region role/blocks/predecessors/successors,
+  bounded disassembly window (`max_insns`), optional per-region Hex-Rays
+  attempt (`try_hexrays`) through the isolation worker with structured
+  failure capture.
 
 Budgets (per request): `depth` (default 2), `max_functions` (default 10,
 clamped 1..50), `detail` (`summary`|`normal`|`full`), `include_noise`. EA

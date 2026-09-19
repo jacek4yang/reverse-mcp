@@ -426,6 +426,49 @@ fn dispatch(
             let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(2000) as usize;
             need_backend(state)?.hr_cfunc(ea, include_ctree, include_lvars, limit)
         }
+        // ---- #72: per-region evidence (run inside the disposable isolation
+        // worker). Bounded raw disassembly window for the region, plus a
+        // best-effort whole-region Hex-Rays snippet; a Hex-Rays failure is
+        // reported structurally instead of failing the call, so the
+        // isolation layer can distinguish "useless pseudocode" from
+        // "worker broken".
+        "region.evidence" => {
+            let ea = ea_param(&params, "ea")?;
+            let end_ea = match params.get("end_ea") {
+                Some(v) if !v.is_null() => Some(ea_param(&params, "end_ea")?),
+                _ => None,
+            };
+            let max_insns = params
+                .get("max_insns")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(4000)
+                .clamp(10, 20_000) as usize;
+            let backend = need_backend(state)?;
+            let disasm = backend.disassemble(ea, end_ea, max_insns)?;
+            // Best-effort Hex-Rays snippet anchored at the region entry. The
+            // likely failure mode on giant functions is a structured
+            // Hex-Rays error (MERR_FUNCSIZE etc. surfaced by the backend);
+            // anything else (panic/OOM) kills the disposable worker, which
+            // the isolation layer reports as Crashed/Timeout.
+            let hexrays = match backend.decompile(ea) {
+                Ok(hr) => Some(hr),
+                Err(e) => Some(json!({
+                    "status": "unavailable",
+                    "error": e.to_string(),
+                })),
+            };
+            let insns: Vec<Value> = disasm
+                .iter()
+                .map(|i| json!({"ea": format!("{:#x}", i.ea), "text": i.text}))
+                .collect();
+            Ok(json!({
+                "region_ea": format!("{ea:#x}"),
+                "end_ea": end_ea.map(|e| format!("{e:#x}")),
+                "insns": insns,
+                "insns_truncated": disasm.len() >= max_insns,
+                "hexrays": hexrays,
+            }))
+        }
         "hr.lvar_rename" => {
             let ea = ea_param(&params, "ea")?;
             let var_defea = ea_param(&params, "var_defea")?;

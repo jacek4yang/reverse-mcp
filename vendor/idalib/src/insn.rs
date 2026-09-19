@@ -1,4 +1,4 @@
-use std::mem;
+//! Operand and instruction wrappers over `insn_t`/`op_t`.
 
 use bitflags::bitflags;
 
@@ -42,6 +42,13 @@ pub enum OperandType {
     IdpSpec3 = o_idpspec3,
     IdpSpec4 = o_idpspec4,
     IdpSpec5 = o_idpspec5,
+    /// Processor-specific value outside the known range. The WASM processor
+    /// emits such types (e.g. 0xe for branch operands); mapping to a
+    /// variant here keeps `Operand::type_()` total instead of panicking on
+    /// `mem::transmute` of an invalid discriminant (issue #71 audit).
+    /// Kept as a doc note; the import is used by other layout helpers.
+    #[doc(hidden)]
+    UnknownIdp = 0xFF,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -172,11 +179,32 @@ impl Operand {
     }
 
     pub fn type_(&self) -> OperandType {
-        unsafe { mem::transmute(self.inner.type_) }
+        // Total mapping: the WASM processor emits op_t.type values outside
+        // the classic range; transmuting those panicked (capacity-overflow
+        // path in the #71 audit). UnknownIdp keeps decoding lossless.
+        match self.inner.type_ {
+            t if t == o_reg => OperandType::Reg,
+            t if t == o_mem => OperandType::Mem,
+            t if t == o_phrase => OperandType::Phrase,
+            t if t == o_displ => OperandType::Displ,
+            t if t == o_imm => OperandType::Imm,
+            t if t == o_far => OperandType::Far,
+            t if t == o_near => OperandType::Near,
+            t if t == o_idpspec0 => OperandType::IdpSpec0,
+            t if t == o_idpspec1 => OperandType::IdpSpec1,
+            t if t == o_idpspec2 => OperandType::IdpSpec2,
+            t if t == o_idpspec3 => OperandType::IdpSpec3,
+            t if t == o_idpspec4 => OperandType::IdpSpec4,
+            t if t == o_idpspec5 => OperandType::IdpSpec5,
+            _ => OperandType::UnknownIdp,
+        }
     }
 
-    pub fn dtype(&self) -> OperandDataType {
-        unsafe { mem::transmute(self.inner.dtype) }
+    pub fn dtype(&self) -> u8 {
+        // Raw value: unlike type_, the dtype range is processor-defined and
+        // callers compare it against known constants; returning the raw byte
+        // avoids a transmute panic on out-of-range values (#71 audit).
+        self.inner.dtype
     }
 
     pub fn reg(&self) -> Option<Register> {

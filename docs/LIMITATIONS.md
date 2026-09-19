@@ -223,6 +223,16 @@ under "Shipped" does not work yet.
   `bench --real-ida` therefore asserts caching within one session, across
   two full scenario passes.
 - `ida_batch` is read-only by design.
+- #72 large functions: whole-function Hex-Rays still refuses oversized
+  functions (`too big function` / `function frame is wrong` are captured
+  structurally, not suppressed) - but this no longer blocks analysis.
+  `ida_analyze workflow=function_hierarchical` partitions the CFG into
+  virtual regions and produces per-region evidence through disposable
+  isolation workers (hard timeout, Job Object kill-on-close, concurrency
+  cap, leak-probed zero-orphan guarantee). Per-region Hex-Rays snippets are
+  best-effort: when the decompiler refuses a region, the response carries
+  the structured failure plus raw-IDA evidence. See
+  docs/LARGE_FUNCTION_ANALYSIS.md.
 
 ## Roadmap (see open issues for current order)
 

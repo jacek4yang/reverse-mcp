@@ -37,6 +37,7 @@ capability-group level; they are audit targets, not benchmarks of code quality.
 | snapshots/rollback | implemented (file-level snapshots, real-IDA tested) | n/a | n/a | n/a | n/a | partial | n/a | n/a | n/a |
 | semantic/evidence search | implemented, real-IDA tested ([index](../crates/rmcp-core/src/analysis_index.rs)) | n/a | n/a | n/a | n/a | partial | n/a | n/a | n/a |
 | high-level Agent workflows | implemented (one-call composite workflows) | n/a | n/a | n/a | n/a | partial | n/a | n/a | n/a |
+| large-function analysis | implemented (#72: complexity preflight + virtual region partition + per-region evidence in disposable isolation workers with hard timeout + resumable dataflow; real-IDA tested on a 3005-block fixture, [docs](LARGE_FUNCTION_ANALYSIS.md)) | n/a | n/a | n/a | n/a | partial (analysis-only detection) | n/a | n/a | n/a |
 | multi-IDB | implemented (multiple sessions, real-IDA tested) | n/a (single IDB) | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | multi-client | implemented (stdio + HTTP, shared broker) | n/a (stdio only) | partial | partial | partial | n/a | n/a | n/a | n/a |
 | crash recovery | implemented (bounded restart, real-IDA tested) | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
