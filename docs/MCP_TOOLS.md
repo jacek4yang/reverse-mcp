@@ -226,6 +226,22 @@ Workflows:
   adds bounded snippets per function.
 - `trace_call_path` - call path from a function to a target (`target_ea`),
   BFS over caller edges; `found: false` when no route exists within `depth`.
+- `function_hierarchical` (#72) - hierarchical large-function analysis:
+  complexity preflight (blocks/edges/SCCs, no Hex-Rays) classifies
+  normal|large|pathological; normal keeps the whole-function path, while
+  large/pathological functions are partitioned into virtual CFG regions and
+  analyzed per-region in disposable isolation workers (Hex-Rays failures
+  degrade to raw-IDA evidence; true hard timeout; primary session never at
+  risk). Overview-first: mode, complexity facts, per-region outcomes,
+  `analysis_status`, `hexrays_failures`, resumable `resume.frontier`,
+  dataflow summary, isolation ledger. Budgets: `max_regions` (1..256,
+  default 16), `hard_timeout_ms` (5000..1800000, default 120000). See
+  `docs/LARGE_FUNCTION_ANALYSIS.md`.
+- `function_region` (#72) - drill into one region from a hierarchical
+  overview (`ea` + `region_id`): region role/blocks/predecessors/successors,
+  bounded disassembly window (`max_insns`), optional per-region Hex-Rays
+  attempt (`try_hexrays`) through the isolation worker with structured
+  failure capture.
 
 Budgets (per request): `depth` (default 2), `max_functions` (default 10,
 clamped 1..50), `detail` (`summary`|`normal`|`full`), `include_noise`. EA

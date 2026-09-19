@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::process::Child;
 use tokio::sync::Semaphore;
 
@@ -36,6 +36,20 @@ pub struct IsoStats {
     pub killed_crash: AtomicU64,
     pub exited_clean: AtomicU64,
     pub rejected_cap: AtomicU64,
+}
+
+impl IsoStats {
+    /// Point-in-time JSON snapshot for tool responses.
+    pub fn snapshot(&self) -> Value {
+        let load = |c: &AtomicU64| c.load(Ordering::Relaxed);
+        json!({
+            "spawned": load(&self.spawned),
+            "killed_timeout": load(&self.killed_timeout),
+            "killed_crash": load(&self.killed_crash),
+            "exited_clean": load(&self.exited_clean),
+            "rejected_cap": load(&self.rejected_cap),
+        })
+    }
 }
 
 /// Outcome of one disposable run.

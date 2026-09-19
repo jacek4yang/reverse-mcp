@@ -224,6 +224,16 @@ impl WorkerPool {
         Err(Error::Worker(msg.to_string()))
     }
 
+    /// The resolved worker exe path (None if resolution has not run).
+    pub fn resolved_worker_exe(&self) -> Option<PathBuf> {
+        self.worker_exe.clone()
+    }
+
+    /// The resolved IDA dir, if any.
+    pub fn resolved_ida_dir(&self) -> Option<PathBuf> {
+        self.ida_dir.clone()
+    }
+
     pub fn set_ida_dir(&mut self, dir: PathBuf) {
         self.ida_dir = Some(dir);
     }

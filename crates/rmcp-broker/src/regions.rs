@@ -212,10 +212,7 @@ fn dedup_sorted(v: &[String]) -> Vec<String> {
 
 /// Entry blocks: have a pred outside the set (or no preds). Exit blocks:
 /// have a succ outside the set (or no succs).
-fn entry_exit_blocks(
-    idx: &CfgIndex,
-    blocks: &[usize],
-) -> (Vec<u64>, Vec<u64>) {
+fn entry_exit_blocks(idx: &CfgIndex, blocks: &[usize]) -> (Vec<u64>, Vec<u64>) {
     let set: std::collections::BTreeSet<usize> = blocks.iter().copied().collect();
     let mut entry = Vec::new();
     let mut exit = Vec::new();
@@ -295,9 +292,7 @@ mod tests {
     #[test]
     fn dispatcher_scc_flagged() {
         // 10-node SCC -> dispatcher.
-        let mut succs: Vec<Vec<usize>> = (0..10)
-            .map(|i| vec![(i + 1) % 10])
-            .collect();
+        let mut succs: Vec<Vec<usize>> = (0..10).map(|i| vec![(i + 1) % 10]).collect();
         succs.push(vec![]);
         succs.push(vec![]);
         succs[9] = vec![0, 10]; // ring close + exit edge
