@@ -189,6 +189,14 @@ impl WorkerPool {
         if let Some(p) = &self.worker_exe {
             return Ok(p.clone());
         }
+        // Env override (tests / exotic layouts): an explicit worker exe wins.
+        if let Ok(p) = std::env::var("REVERSE_MCP_WORKER_EXE") {
+            let p = PathBuf::from(p);
+            if p.is_file() {
+                self.worker_exe = Some(p.clone());
+                return Ok(p);
+            }
+        }
         let exe_dir = rmcp_core::layout::exe_dir();
         let mut candidates: Vec<PathBuf> = Vec::new();
         if let Ok(cur) = std::env::current_exe() {
