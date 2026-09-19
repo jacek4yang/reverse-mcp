@@ -38,11 +38,11 @@ if (-not $SkipGates) {
     if ($LASTEXITCODE -ne 0) { throw "fmt failed" }
 
     Write-Host "=== 3. clippy (deny warnings) ==="
-    cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker --all-targets -- -D warnings
+    cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker -p rmcp-wasm --all-targets -- -D warnings
     if ($LASTEXITCODE -ne 0) { throw "clippy failed" }
 
     Write-Host "=== 4. mock tests ==="
-    cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
+    cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker -p rmcp-wasm
     if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 
     Write-Host "=== 5. mock bench gate ==="
@@ -117,5 +117,9 @@ Write-Host "  1. real-IDA gated suite:"
 Write-Host "     `$env:IDADIR='<ida>'; cargo test -p reverse-mcp --release --features idalib --test idalib_real -- --ignored --test-threads=1"
 Write-Host "  2. real-IDA bench:"
 Write-Host "     cargo run --release -p reverse-mcp --features idalib -- bench --real-ida"
-Write-Host "  3. soak gates: 60s bundled; 12h/24h via scripts\soak.ps1 (see docs\RELEASE_CHECKLIST.md)"
-Write-Host "  4. Tier-A + Tier-B acceptance suites (docs/logic_acceptance, docs/malware_acceptance)"
+Write-Host "  3. large-function hierarchical gate (#72):"
+Write-Host "     cargo test -p reverse-mcp --release --features idalib --test largefn_real -- --ignored --test-threads=1"
+Write-Host "  4. WASM real-IDA gates (#71):"
+Write-Host "     cargo test -p reverse-mcp --release --features idalib --test wasm_real -- --ignored --test-threads=1"
+Write-Host "  5. Tier-A + Tier-B acceptance suites (docs/logic_acceptance, docs/malware_acceptance)"
+Write-Host "  6. soak gates: 60s bundled; 12h/24h via scripts\soak.ps1 (see docs\RELEASE_CHECKLIST.md)"

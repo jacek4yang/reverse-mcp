@@ -31,6 +31,21 @@ but *unverified* until #48 lands; do not claim support in release notes.
       - the full #8–#47 regression chain.
 - [ ] Hostile-input triage: any worker crash / unbounded output / hang
       found here is fixed or explicitly bounded before proceeding.
+- [ ] Large-function hierarchical gate (#72): `cargo test -p reverse-mcp
+      --release --features idalib --test largefn_real -- --ignored
+      --test-threads=1` — pass (giant fixture classifies + region evidence
+      + isolation + drill-in + normal control + zero leak).
+- [ ] WASM real-IDA gates (#71): `cargo test -p reverse-mcp --release
+      --features idalib --test wasm_real -- --ignored --test-threads=1` —
+      pass (br_if disassembly + full `ida_wasm` tool actions + malformed
+      bounded failure).
+- [ ] Tier-A logic acceptance (external MCP client path): `cargo test -p
+      reverse-mcp --test logic_acceptance -- --ignored` — pass, zero
+      unsupported confirmed claims.
+- [ ] Tier-B malware acceptance: `cargo test -p reverse-mcp --test
+      malware_acceptance` — pass.
+- [ ] Corpus real (>=20 binaries end-to-end): `cargo test -p reverse-mcp
+      --test corpus_real -- --ignored --test-threads=1` — pass.
 
 ## 3. Long-run reliability
 - [ ] 60-second soak: `cargo test -p rmcp-broker --test soak` — pass.
