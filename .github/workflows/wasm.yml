@@ -1,0 +1,108 @@
+name: wasm
+
+# Issue #71: WASM semantic layer CI. Heavy builds/tests (corpus builds with
+# clang/rustc, wasmparser-based crate, differential tests) run here so local
+# machines only need light incremental work. Static analysis only: no sample
+# is ever executed; no network during tests.
+
+on:
+  push:
+    branches: [main, "feat/wasm*"]
+    paths:
+      - "crates/rmcp-wasm/**"
+      - "crates/rmcp-worker/**"
+      - "crates/rmcp-broker/**"
+      - "crates/rmcp-core/**"
+      - "tests/**"
+      - "tests/fixtures/wasm/**"
+      - ".github/workflows/wasm.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/rmcp-wasm/**"
+      - ".github/workflows/wasm.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (pinned by rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Add wasm32 targets (corpus rebuilds + parser tests)
+        run: rustup target add wasm32-unknown-unknown wasm32-wasip1
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wasm-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-cargo-
+
+      # Differential oracles (optional, installed from release binaries so
+      # no source build time is spent). Failure to install degrades the
+      # differential tests to "skipped", never the whole job.
+      - name: Install wasm-tools (differential oracle, optional)
+        shell: bash
+        run: |
+          # asset name pattern: wasm-tools-vX.Y.Z-x86_64-linux.tar.gz
+          set +e
+          VER=$(curl -sL https://api.github.com/repos/bytecodealliance/wasm-tools/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "latest tag: $VER"
+          curl -sL "https://github.com/bytecodealliance/wasm-tools/releases/download/${VER}/wasm-tools-${VER}-x86_64-linux.tar.gz" -o /tmp/wt.tgz || true
+          mkdir -p /tmp/wt && tar -xzf /tmp/wt.tgz -C /tmp/wt || true
+          sudo find /tmp/wt -name wasm-tools -type f -exec install {} /usr/local/bin/ \; || true
+          wasm-tools --version || echo "wasm-tools unavailable; differential tests will skip"
+
+      - name: Install wabt (differential oracle, optional)
+        shell: bash
+        run: |
+          set +e
+          VER=$(curl -sL https://api.github.com/repos/WebAssembly/wabt/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          echo "latest tag: $VER"
+          curl -sL "https://github.com/WebAssembly/wabt/releases/download/${VER}/wabt-${VER#v}-ubuntu.tar.gz" -o /tmp/wabt.tgz || true
+          mkdir -p /tmp/wabt && tar -xzf /tmp/wabt.tgz -C /tmp/wabt || true
+          sudo find /tmp/wabt \( -name wat2wasm -o -name wasm2wat -o -name wasm-objdump \) -type f -exec install {} /usr/local/bin/ \; || true
+          wat2wasm --version || echo "wabt unavailable; differential tests will skip"
+
+      - name: Encoding guard
+        run: python3 -X utf8 scripts/check-encoding.py
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings, includes rmcp-wasm)
+        run: cargo clippy -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker -p rmcp-wasm --all-targets -- -D warnings
+
+      - name: Build WASM corpus (pinned fixtures, no network)
+        run: |
+          # corpus builder binary lands with the corpus commit; skip until then
+          if cargo metadata --format-version 1 --no-deps 2>/dev/null | grep -q '"name": "build_corpus"'; then
+            cargo run --release -p rmcp-wasm --bin build_corpus -- --check
+          else
+            echo "corpus builder not present yet; skipping"
+          fi
+
+      - name: WASM crate unit tests (parser/CFG/SSA/calls/pseudocode)
+        run: cargo test -p rmcp-wasm
+
+      - name: Full workspace mock tests (regression guard)
+        run: cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
+
+      - name: WASM differential validation (vs wasm-tools/wabt, when present)
+        run: |
+          if [ -f crates/rmcp-wasm/tests/differential.rs ]; then
+            cargo test -p rmcp-wasm --test differential -- --ignored
+          else
+            echo "differential suite not present yet; skipping"
+          fi

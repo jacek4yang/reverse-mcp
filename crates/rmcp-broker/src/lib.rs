@@ -34,6 +34,7 @@ pub mod regions;
 pub mod registry;
 pub mod resources;
 pub mod tools;
+pub mod wasm_tools;
 pub mod worker_pool;
 
 pub use worker_pool::WorkerPool;

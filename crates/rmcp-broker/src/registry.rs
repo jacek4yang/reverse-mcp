@@ -10,6 +10,7 @@ use rmcp::model::{Tool, object};
 use crate::Broker;
 use crate::largefn_tools;
 use crate::tools;
+use crate::wasm_tools;
 
 struct ToolDef {
     name: &'static str,
@@ -160,6 +161,11 @@ fn defs() -> Vec<ToolDef> {
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}}}),
         },
         ToolDef {
+            name: "ida_wasm",
+            description: "WebAssembly analysis (#71). Fuses the IDA-native WASM loader facts with the independent rmcp-wasm parser (wasmparser-based, bounded, static-only). action=info: module model overview + feature map + cross-engine checks (function counts, code-offset mapping). Query actions: sections|types|imports (with WASI grouping)|exports|functions (fused index-space rows with per-row name provenance: parser/ida)|globals|tables|memories|elements|datas. action=cfg: structured control flow (block/loop/if preserved, never flattened) for one function by wasm 'index'. action=pseudocode: deterministic WASM-native C-like rendering - explicitly NOT Hex-Rays (IDA has no WASM decompiler). action=indirect_targets: evidence-backed call_indirect resolution (confirmed/candidate/unresolved, never fabricated certainty). Malformed modules fail locally with bounded diagnostics.",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "action": {"type": "string", "enum": ["info", "sections", "types", "imports", "exports", "functions", "globals", "tables", "memories", "elements", "datas", "cfg", "pseudocode", "indirect_targets"]}, "index": {"type": "string", "description": "wasm function index (cfg|pseudocode|indirect_targets)"}}, "required": ["action"]}),
+        },
+        ToolDef {
             name: "ida_imports",
             description: "Imported modules and import entries (ea, name, ordinal); paginated.",
             schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "module": {"type": "integer", "description": "module index; omit for all modules"}, "offset": {"type": "integer"}, "limit": {"type": "integer", "maximum": 1000}}}),
@@ -247,6 +253,7 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_deobfuscate" => tools::tool_deobfuscate(broker, args).await,
         "ida_sig" => tools::tool_sig(broker, args).await,
         "ida_metadata" => tools::tool_metadata(broker, args).await,
+        "ida_wasm" => wasm_tools::tool_wasm(broker, args).await,
         "ida_imports" => tools::tool_imports(broker, args).await,
         "ida_fixups" => tools::tool_fixups(broker, args).await,
         "ida_filemap" => tools::tool_filemap(broker, args).await,
