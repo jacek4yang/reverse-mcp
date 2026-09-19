@@ -9,7 +9,7 @@
       "ok": true
     },
     "imports": {
-      "count": 165,
+      "count": 296,
       "ok": true
     },
     "indirect_calls_query": {
@@ -27,9 +27,9 @@
     "strings_hit": 0,
     "strings_total": 2
   },
-  "imports_recovered": 165,
+  "imports_recovered": 296,
   "label": "our_reverse_mcp",
   "open": true,
   "path_sha": "D:\\Workspace\\reverse-mcp\\target\\release\\reverse-mcp.exe",
-  "wall_secs": 183
+  "wall_secs": 220
 }

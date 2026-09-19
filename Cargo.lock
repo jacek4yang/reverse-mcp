@@ -1406,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "rmcp-wasm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rmcp-core",
  "serde",
