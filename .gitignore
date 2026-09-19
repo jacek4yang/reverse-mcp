@@ -59,3 +59,5 @@ corpus_local/
 docs/malware_acceptance/dossiers/
 docs/malware_acceptance/report.json
 docs/malware_acceptance/manifest.local.json
+tests/fixtures/largefn/*.obj
+tests/fixtures/largefn/*.lib

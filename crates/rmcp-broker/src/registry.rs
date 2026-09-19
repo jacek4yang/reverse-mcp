@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use rmcp::model::{Tool, object};
 
 use crate::Broker;
+use crate::largefn_tools;
 use crate::tools;
 
 struct ToolDef {
@@ -110,8 +111,8 @@ fn defs() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "ida_analyze",
-            description: "Composite analysis workflows (#8): one request replaces many atomic calls. workflow=function_context (decompile+prototype+callers/callees+xrefs+strings+constants+imports), call_neighborhood (bounded BFS through call edges, noise-filtered), reference_context (target->xrefs->functions->callers), import_usage (import->sites->callers), subsystem_context (bounded multi-function from roots), trace_call_path (find path between two functions). Budgets: depth, max_functions, detail=summary|normal|full. Unchanged repeats served from a revision-keyed cache (cached=true).",
-            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "workflow": {"type": "string", "enum": ["function_context", "call_neighborhood", "reference_context", "import_usage", "subsystem_context", "trace_call_path"]}, "ea": {"type": "string"}, "target_ea": {"type": "string"}, "name": {"type": "string"}, "roots": {"type": "array", "items": {"type": "string"}}, "depth": {"type": "integer"}, "max_functions": {"type": "integer", "maximum": 50}, "detail": {"type": "string", "enum": ["summary", "normal", "full"]}, "include_noise": {"type": "boolean"}}, "required": ["workflow"]}),
+            description: "Composite analysis workflows (#8): one request replaces many atomic calls. workflow=function_context (decompile+prototype+callers/callees+xrefs+strings+constants+imports), call_neighborhood (bounded BFS through call edges, noise-filtered), reference_context (target->xrefs->functions->callers), import_usage (import->sites->callers), subsystem_context (bounded multi-function from roots), trace_call_path (find path between two functions). workflow=function_hierarchical (#72): complexity preflight (blocks/edges/SCC, no Hex-Rays) classifies normal|large|pathological; normal keeps the whole-function path, large/pathological are partitioned into virtual CFG regions and analyzed per-region in disposable isolation workers (Hex-Rays failure degrades to raw-IDA evidence; true hard timeout, primary session never at risk); overview-first with resumable frontier. workflow=function_region: drill into one region (region_id from the hierarchical overview) - bounded disassembly window + optional per-region Hex-Rays attempt through the isolation worker. Budgets: depth, max_functions, detail=summary|normal|full, max_regions (1..256, default 16), hard_timeout_ms (5s..30min, default 120s), max_insns, try_hexrays. Unchanged repeats served from a revision-keyed cache (cached=true).",
+            schema: json!({"type": "object", "properties": {"db": {"type": "string"}, "workflow": {"type": "string", "enum": ["function_context", "call_neighborhood", "reference_context", "import_usage", "subsystem_context", "trace_call_path", "function_hierarchical", "function_region"]}, "ea": {"type": "string"}, "target_ea": {"type": "string"}, "name": {"type": "string"}, "roots": {"type": "array", "items": {"type": "string"}}, "depth": {"type": "integer"}, "max_functions": {"type": "integer", "maximum": 50}, "detail": {"type": "string", "enum": ["summary", "normal", "full"]}, "include_noise": {"type": "boolean"}, "region_id": {"type": "string", "description": "region id from the function_hierarchical overview (function_region)"}, "max_regions": {"type": "integer", "minimum": 1, "maximum": 256}, "hard_timeout_ms": {"type": "integer", "minimum": 5000, "maximum": 1800000}, "max_insns": {"type": "integer"}, "try_hexrays": {"type": "integer", "enum": [0, 1]}}, "required": ["workflow"]}),
         },
         ToolDef {
             name: "ida_evidence",
@@ -230,7 +231,16 @@ pub async fn call(broker: &Broker, name: &str, args: Value) -> Result<Value, rmc
         "ida_health" => tools::tool_health(broker, args).await,
         "ida_jobs" => tools::tool_jobs(broker, args).await,
         "ida_evidence" => tools::tool_evidence(broker, args).await,
-        "ida_analyze" => tools::tool_analyze(broker, args).await,
+        "ida_analyze" => {
+            let wf = args.get("workflow").and_then(|v| v.as_str()).unwrap_or("");
+            match wf {
+                "function_hierarchical" => {
+                    largefn_tools::tool_analyze_hierarchical(broker, args).await
+                }
+                "function_region" => largefn_tools::tool_analyze_region(broker, args).await,
+                _ => tools::tool_analyze(broker, args).await,
+            }
+        }
         "ida_deep" => tools::tool_deep(broker, args).await,
         "ida_type_recovery" => tools::tool_type_recovery(broker, args).await,
         "ida_intel" => tools::tool_intel(broker, args).await,
