@@ -60,8 +60,10 @@ fn count_our_worker_processes() -> usize {
 }
 
 async fn make_broker() -> Arc<Broker> {
-    let mut config = rmcp_core::config::Config::default();
-    config.max_workers = 4;
+    let config = rmcp_core::config::Config {
+        max_workers: 4,
+        ..Default::default()
+    };
     let broker = Broker::new(config);
     if let Ok(ida_dir) = std::env::var("IDADIR") {
         broker.pool.lock().await.set_ida_dir(PathBuf::from(ida_dir));
