@@ -2,7 +2,7 @@
 
 Status: accurate as of the #49 documentation sync (2026-09-16), main branch.
 
-35 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
+36 tools. `reverse-mcp bench` runs a reproducible mock-mode task benchmark (round trips, output bytes, wall time, correctness) for regression gating (issue #18); see docs/CAPABILITY_MATRIX.md for the audited capability matrix. Every list/search/graph result is bounded; oversized responses spill
 to the result store (`result_ref: rN` + preview), never truncated silently.
 Addresses are hex strings (`0x401000`) or decimal. Optional `db` handle: omit it
 when exactly one DB is open; with several open, omitting it yields `db_ambiguous`.
@@ -119,6 +119,21 @@ Extended DB metadata: `md5`/`sha256` of the input file (null when
 unavailable), `imagebase`, `entry_count` + `entries` (ordinal/ea/name), plus
 honest `tls_callbacks_supported:false` / `exception_handlers_supported:false`
 fields (not exposed by the SDK surface used).
+
+### ida_wasm
+WebAssembly analysis (#71). Fuses the IDA-native WASM loader facts with the
+independent rmcp-wasm parser (wasmparser-based, bounded, static-only).
+`action=info`: module model overview + feature map + cross-engine checks
+(function counts, code-offset mapping). Query actions: `sections`/`types`/
+`imports` (with WASI grouping)/`exports`/`functions` (fused index-space rows
+with per-row name provenance: parser/ida)/`globals`/`tables`/`memories`/
+`elements`/`datas`. `action=cfg`: structured control flow (block/loop/if
+preserved, never flattened) for one function by wasm `index`.
+`action=pseudocode`: deterministic WASM-native C-like rendering - explicitly
+NOT Hex-Rays (IDA has no WASM decompiler). `action=indirect_targets`:
+evidence-backed `call_indirect` resolution (confirmed/candidate/unresolved,
+never fabricated certainty). Malformed modules fail locally with bounded
+diagnostics. See docs/WASM_ANALYSIS.md.
 
 ### ida_imports
 Imported modules with entries (`ea`, `name`, `ordinal`); `module` selects one
