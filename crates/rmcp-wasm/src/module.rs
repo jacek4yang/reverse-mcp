@@ -193,9 +193,7 @@ fn perr(e: wasmparser::BinaryReaderError) -> Error {
     }
 }
 
-/// Parse a full WASM binary into the model. `bytes` is the whole file.
-
-/// Record one section's byte range in the model (bounded).
+/// Record one section's byte range in the model (bounded by max_sections).
 fn record_section(model: &mut ModuleModel, id: u8, name: &str, range: std::ops::Range<usize>) {
     if model.sections.len() < model_max_sections() {
         model.sections.push(SectionInfo {
@@ -211,6 +209,7 @@ fn model_max_sections() -> usize {
     4096 // mirrors ParseBudget::default().max_sections
 }
 
+/// Parse a full WASM binary into the model. `bytes` is the whole file.
 pub fn parse(bytes: &[u8]) -> Result<ModuleModel> {
     parse_with_budget(bytes, &ParseBudget::default())
 }
