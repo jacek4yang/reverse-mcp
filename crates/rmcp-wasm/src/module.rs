@@ -211,7 +211,6 @@ fn model_max_sections() -> usize {
     4096 // mirrors ParseBudget::default().max_sections
 }
 
-
 pub fn parse(bytes: &[u8]) -> Result<ModuleModel> {
     parse_with_budget(bytes, &ParseBudget::default())
 }

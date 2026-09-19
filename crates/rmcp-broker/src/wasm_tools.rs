@@ -14,11 +14,11 @@
 //!
 //! Static only: the parser never executes module code.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-use crate::{arg_str, bound_output, mcp_code, resolve_db, Broker};
-use crate::tools::{err_from, McpError};
+use crate::tools::{McpError, err_from};
+use crate::{Broker, arg_str, bound_output, mcp_code, resolve_db};
 
 /// Default parse budget: bounded so adversarial modules fail locally.
 const PARSE_LIMIT_BYTES: usize = 256 * 1024 * 1024;
@@ -43,12 +43,8 @@ pub async fn tool_wasm(broker: &Broker, args: Value) -> Result<Value, McpError> 
             &format!("module exceeds parse budget ({PARSE_LIMIT_BYTES} bytes)"),
         ));
     }
-    let model = rmcp_wasm::module::parse(&raw).map_err(|e| {
-        mcp_code(
-            "wasm_parse",
-            &format!("not a parseable WASM module: {e}"),
-        )
-    })?;
+    let model = rmcp_wasm::module::parse(&raw)
+        .map_err(|e| mcp_code("wasm_parse", &format!("not a parseable WASM module: {e}")))?;
 
     // IDA-side facts (native loader) for cross-engine fusion.
     let ida_functions = s
@@ -96,9 +92,7 @@ pub async fn tool_wasm(broker: &Broker, args: Value) -> Result<Value, McpError> 
         .map(|s| (s.offset, s.offset + s.size));
     let code_mapping = match code_section {
         Some((start, end)) => {
-            let covered = seg_ranges
-                .iter()
-                .any(|(s, e, _)| *s <= start && end <= *e);
+            let covered = seg_ranges.iter().any(|(s, e, _)| *s <= start && end <= *e);
             if covered {
                 "confirmed".to_string()
             } else {
@@ -203,13 +197,17 @@ pub async fn tool_wasm(broker: &Broker, args: Value) -> Result<Value, McpError> 
                 .functions
                 .iter()
                 .find(|f| f.index == idx)
-                .ok_or_else(|| mcp_code("invalid_args", &format!("function index {idx} not in module")))?;
-            let body = &raw[f.code_offset as usize
-                ..(f.code_offset + f.code_size) as usize];
+                .ok_or_else(|| {
+                    mcp_code(
+                        "invalid_args",
+                        &format!("function index {idx} not in module"),
+                    )
+                })?;
+            let body = &raw[f.code_offset as usize..(f.code_offset + f.code_size) as usize];
             let cfg = rmcp_wasm::cfg::analyze_body(body)
                 .map_err(|e| mcp_code("wasm_cfg", &format!("structured CFG failed: {e}")))?;
-            let out = serde_json::to_value(&cfg)
-                .map_err(|e| mcp_code("internal", &e.to_string()))?;
+            let out =
+                serde_json::to_value(&cfg).map_err(|e| mcp_code("internal", &e.to_string()))?;
             Ok(json!({"db": db, "wasm": bound_output(broker, "ida_wasm.cfg", out)}))
         }
         "pseudocode" => {
@@ -222,9 +220,13 @@ pub async fn tool_wasm(broker: &Broker, args: Value) -> Result<Value, McpError> 
                 .functions
                 .iter()
                 .find(|f| f.index == idx)
-                .ok_or_else(|| mcp_code("invalid_args", &format!("function index {idx} not in module")))?;
-            let body = &raw[f.code_offset as usize
-                ..(f.code_offset + f.code_size) as usize];
+                .ok_or_else(|| {
+                    mcp_code(
+                        "invalid_args",
+                        &format!("function index {idx} not in module"),
+                    )
+                })?;
+            let body = &raw[f.code_offset as usize..(f.code_offset + f.code_size) as usize];
             let cfg = rmcp_wasm::cfg::analyze_body(body)
                 .map_err(|e| mcp_code("wasm_cfg", &format!("structured CFG failed: {e}")))?;
             let text = rmcp_wasm::pseudo::render(&model, idx, body, &cfg)
@@ -248,19 +250,26 @@ pub async fn tool_wasm(broker: &Broker, args: Value) -> Result<Value, McpError> 
                 .functions
                 .iter()
                 .find(|f| f.index == idx)
-                .ok_or_else(|| mcp_code("invalid_args", &format!("function index {idx} not in module")))?;
-            let body = &raw[f.code_offset as usize
-                ..(f.code_offset + f.code_size) as usize];
+                .ok_or_else(|| {
+                    mcp_code(
+                        "invalid_args",
+                        &format!("function index {idx} not in module"),
+                    )
+                })?;
+            let body = &raw[f.code_offset as usize..(f.code_offset + f.code_size) as usize];
             let cfg = rmcp_wasm::cfg::analyze_body(body)
                 .map_err(|e| mcp_code("wasm_cfg", &format!("structured CFG failed: {e}")))?;
-            let targets = rmcp_wasm::calls::resolve_indirect(&model, &cfg.indirect_calls, &BTreeMap::new());
-            let out = serde_json::to_value(&targets)
-                .map_err(|e| mcp_code("internal", &e.to_string()))?;
+            let targets =
+                rmcp_wasm::calls::resolve_indirect(&model, &cfg.indirect_calls, &BTreeMap::new());
+            let out =
+                serde_json::to_value(&targets).map_err(|e| mcp_code("internal", &e.to_string()))?;
             Ok(json!({"db": db, "wasm": bound_output(broker, "ida_wasm.indirect_targets", out)}))
         }
         other => Err(mcp_code(
             "invalid_args",
-            &format!("unknown action '{other}' (info|sections|types|imports|exports|functions|globals|tables|memories|elements|datas|cfg|pseudocode|indirect_targets)"),
+            &format!(
+                "unknown action '{other}' (info|sections|types|imports|exports|functions|globals|tables|memories|elements|datas|cfg|pseudocode|indirect_targets)"
+            ),
         )),
     }
 }

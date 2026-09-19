@@ -133,11 +133,7 @@ async fn wasm_ida_wasm_tool_actions() {
     config.max_workers = 2;
     let broker = Broker::new(config);
     if let Ok(ida) = std::env::var("IDADIR") {
-        broker
-            .pool
-            .lock()
-            .await
-            .set_ida_dir(PathBuf::from(ida));
+        broker.pool.lock().await.set_ida_dir(PathBuf::from(ida));
     }
 
     let dir = std::env::temp_dir().join(format!("rmcp-wasm-tool-{}", std::process::id()));
@@ -159,17 +155,24 @@ async fn wasm_ida_wasm_tool_actions() {
     let handle = open["db"].as_str().expect("db handle").to_string();
 
     // info: cross-engine checks must confirm on the fixture.
-    let info = rmcp_broker::registry::call(
-        &broker,
-        "ida_wasm",
-        json!({"db": handle, "action": "info"}),
-    )
-    .await
-    .expect("ida_wasm info");
+    let info =
+        rmcp_broker::registry::call(&broker, "ida_wasm", json!({"db": handle, "action": "info"}))
+            .await
+            .expect("ida_wasm info");
     let w = &info["wasm"];
-    let payload = if w["result"].is_object() { &w["result"] } else { w };
-    assert_eq!(payload["cross_check"]["function_count_confirmed"], json!(true));
-    assert_eq!(payload["cross_check"]["code_offset_mapping"], json!("confirmed"));
+    let payload = if w["result"].is_object() {
+        &w["result"]
+    } else {
+        w
+    };
+    assert_eq!(
+        payload["cross_check"]["function_count_confirmed"],
+        json!(true)
+    );
+    assert_eq!(
+        payload["cross_check"]["code_offset_mapping"],
+        json!("confirmed")
+    );
     assert!(
         payload["features"].is_object(),
         "feature map must be present"
@@ -191,14 +194,24 @@ async fn wasm_ida_wasm_tool_actions() {
     .await
     .expect("ida_wasm functions");
     let fw = &fns["wasm"];
-    let fp = if fw["result"].is_object() { &fw["result"] } else { fw };
+    let fp = if fw["result"].is_object() {
+        &fw["result"]
+    } else {
+        fw
+    };
     let rows = fp["functions"].as_array().expect("function rows");
     assert_eq!(rows.len(), 6);
     let add_row = rows
         .iter()
         .find(|r| {
-            r["ida_name"].as_str().map(|n| n.contains("add")).unwrap_or(false)
-                || r["name_parser"].as_str().map(|n| n.contains("add")).unwrap_or(false)
+            r["ida_name"]
+                .as_str()
+                .map(|n| n.contains("add"))
+                .unwrap_or(false)
+                || r["name_parser"]
+                    .as_str()
+                    .map(|n| n.contains("add"))
+                    .unwrap_or(false)
         })
         .expect("add function row");
     assert!(
@@ -215,9 +228,16 @@ async fn wasm_ida_wasm_tool_actions() {
     .await
     .expect("ida_wasm cfg");
     let cw = &cfg["wasm"];
-    let cp = if cw["result"].is_object() { &cw["result"] } else { cw };
+    let cp = if cw["result"].is_object() {
+        &cw["result"]
+    } else {
+        cw
+    };
     assert!(
-        cp["regions"].as_array().map(|r| !r.is_empty()).unwrap_or(false),
+        cp["regions"]
+            .as_array()
+            .map(|r| !r.is_empty())
+            .unwrap_or(false),
         "structured CFG regions must be present: {cp}"
     );
 
@@ -230,7 +250,11 @@ async fn wasm_ida_wasm_tool_actions() {
     .await
     .expect("ida_wasm pseudocode");
     let pw = &pseudo["wasm"];
-    let pp = if pw["result"].is_object() { &pw["result"] } else { pw };
+    let pp = if pw["result"].is_object() {
+        &pw["result"]
+    } else {
+        pw
+    };
     assert!(
         pp["engine"].as_str().unwrap_or("").contains("NOT Hex-Rays"),
         "pseudocode must be labeled as not Hex-Rays"
@@ -246,11 +270,12 @@ async fn wasm_ida_wasm_tool_actions() {
     .await
     .expect("ida_wasm indirect_targets");
     let iw = &indirect["wasm"];
-    let ip = if iw["result"].is_object() { &iw["result"] } else { iw };
-    assert!(
-        ip.is_array(),
-        "indirect target list must be an array: {ip}"
-    );
+    let ip = if iw["result"].is_object() {
+        &iw["result"]
+    } else {
+        iw
+    };
+    assert!(ip.is_array(), "indirect target list must be an array: {ip}");
 
     // Malformed module fails locally with a bounded diagnostic, not a crash.
     // The IDA loader itself refuses truncated modules (open fails) - that is
@@ -295,12 +320,9 @@ async fn wasm_ida_wasm_tool_actions() {
         }
     }
 
-    let _ = rmcp_broker::registry::call(
-        &broker,
-        "ida_db",
-        json!({"action": "close", "db": handle}),
-    )
-    .await;
+    let _ =
+        rmcp_broker::registry::call(&broker, "ida_db", json!({"action": "close", "db": handle}))
+            .await;
     let _ = rmcp_broker::registry::call(
         &broker,
         "ida_db",
