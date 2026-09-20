@@ -12,6 +12,20 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
+# Orphan counting must only consider workers spawned from THIS repo's
+# target tree: the user may run their own reverse-mcp instances (e.g. an
+# MCP server from another location), and an unfiltered count both creates
+# false failures and would force-kill the user's processes.
+$soakTreePrefix = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path + "\target"
+function Get-SoakTreeWorkerCount {
+    @(Get-CimInstance Win32_Process -Filter "Name='reverse-mcp.exe'" |
+        Where-Object { $_.ExecutablePath -like "$soakTreePrefix*" }).Count
+}
+function Stop-SoakTreeWorkers {
+    Get-CimInstance Win32_Process -Filter "Name='reverse-mcp.exe'" |
+        Where-Object { $_.ExecutablePath -like "$soakTreePrefix*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
 # Toolchain comes from PATH (never a machine-specific absolute path).
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw "soak: cargo not found on PATH; install the Rust toolchain first"
@@ -32,7 +46,7 @@ while ((Get-Date) -lt $deadline) {
     $runs++
     Write-Host "--- soak iteration $runs at $(Get-Date -Format HH:mm:ss) ---"
 
-    $workerBefore = @(Get-Process reverse-mcp -ErrorAction SilentlyContinue).Count
+    $workerBefore = Get-SoakTreeWorkerCount
     cargo @testArgs
     if ($LASTEXITCODE -ne 0) {
         $failures++
@@ -42,10 +56,10 @@ while ((Get-Date) -lt $deadline) {
 
     Start-Sleep -Seconds 5
     # Orphan check: each iteration's workers must be gone when the test ends.
-    $workerAfter = @(Get-Process reverse-mcp -ErrorAction SilentlyContinue).Count
+    $workerAfter = Get-SoakTreeWorkerCount
     if ($workerAfter -gt 0) {
-        Write-Host "WARNING: $workerAfter reverse-mcp process(es) still alive after run"
-        Get-Process reverse-mcp | Stop-Process -Force -ErrorAction SilentlyContinue
+        Write-Host "WARNING: $workerAfter soak-tree reverse-mcp process(es) still alive after run"
+        Stop-SoakTreeWorkers
         $failures++
     }
 }
