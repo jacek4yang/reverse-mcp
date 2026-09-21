@@ -91,3 +91,31 @@ fn doctor_reports_backend_and_toolchain_sections() {
         "doctor must report ABI probe status; stdout: {stdout}"
     );
 }
+
+#[test]
+fn bench_json_schema_mock_mode() {
+    // Mock bench (CI-safe): the JSON report must expose the schema #50
+    // documents - mode, all_ok, per-scenario correctness fields, latency
+    // percentiles reported but never asserted.
+    let out = cli().args(["bench", "--json"]).output().expect("run bench");
+    assert!(out.status.success(), "bench failed");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).expect("bench JSON parse");
+    assert_eq!(v["benchmark"], "reverse-mcp-bench");
+    assert_eq!(v["mode"], "mock");
+    assert_eq!(v["all_ok"], true);
+    let scenarios = v["scenarios"].as_array().expect("scenarios array");
+    assert!(!scenarios.is_empty(), "at least one scenario");
+    for s in scenarios {
+        assert!(s["ok"].as_bool().unwrap_or(false), "scenario not ok: {s}");
+        assert!(s["name"].as_str().is_some(), "scenario missing name");
+        assert!(s["wall_ms"].as_u64().is_some(), "scenario missing wall_ms");
+        assert!(
+            s["round_trips"].as_u64().is_some(),
+            "scenario missing round_trips"
+        );
+    }
+    let lat = &v["latency"];
+    assert!(lat["p50_ms"].as_u64().is_some(), "latency missing p50_ms");
+    assert!(lat["p95_ms"].as_u64().is_some(), "latency missing p95_ms");
+}

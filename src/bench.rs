@@ -235,6 +235,16 @@ async fn run_scenario_deep(pool: &mut rmcp_broker::WorkerPool) -> ScenarioResult
 
 /// Machine-readable benchmark report.
 pub fn report(results: &[ScenarioResult]) -> Value {
+    let mut walls: Vec<u128> = results.iter().map(|r| r.wall_ms).collect();
+    walls.sort_unstable();
+    let p = |q: f64| -> u128 {
+        if walls.is_empty() {
+            0
+        } else {
+            let idx = (((walls.len() as f64) - 1.0) * q).round() as usize;
+            walls[idx.min(walls.len() - 1)]
+        }
+    };
     json!({
         "benchmark": "reverse-mcp-bench",
         "mode": "mock",
@@ -247,8 +257,52 @@ pub fn report(results: &[ScenarioResult]) -> Value {
             "detail": r.detail,
         })).collect::<Vec<_>>(),
         "all_ok": results.iter().all(|r| r.ok),
+        "latency": {
+            "note": "reported only; correctness and cache behavior are the gates",
+            "p50_ms": p(0.5),
+            "p95_ms": p(0.95),
+            "samples": walls.len(),
+        },
         "thresholds": {
             "note": "mock-mode thresholds: correctness only; latency varies by runner",
         },
+    })
+}
+
+/// #50 real-IDA report: mode-tagged, with per-scenario detail, cache
+/// metrics, p50/p95 latency over scenario runs (reported, not asserted),
+/// and correctness gates. Latency never fails the run.
+pub fn report_real(results: &[ScenarioResult], extras: &Value) -> Value {
+    let mut walls: Vec<u128> = results.iter().map(|r| r.wall_ms).collect();
+    walls.sort_unstable();
+    let p = |q: f64| -> u128 {
+        if walls.is_empty() {
+            0
+        } else {
+            let idx = (((walls.len() as f64) - 1.0) * q).round() as usize;
+            walls[idx.min(walls.len() - 1)]
+        }
+    };
+    json!({
+        "benchmark": "reverse-mcp-bench",
+        "mode": "real-ida",
+        "requires": "licensed IDA 9.2 (IDADIR); verified backend registry entry",
+        "no_mock_fallback": true,
+        "scenarios": results.iter().map(|r| json!({
+            "name": r.name,
+            "ok": r.ok,
+            "round_trips": r.round_trips,
+            "output_bytes": r.output_bytes,
+            "wall_ms": r.wall_ms,
+            "detail": r.detail,
+        })).collect::<Vec<_>>(),
+        "extras": extras,
+        "latency": {
+            "note": "reported only; correctness and cache behavior are the gates",
+            "p50_ms": p(0.5),
+            "p95_ms": p(0.95),
+            "samples": walls.len(),
+        },
+        "all_ok": results.iter().all(|r| r.ok),
     })
 }

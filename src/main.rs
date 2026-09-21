@@ -12,6 +12,7 @@
 //! it once idalib is actually initialized.
 
 mod bench;
+mod bench_real;
 mod cli;
 
 use std::path::PathBuf;
@@ -55,13 +56,24 @@ async fn main() {
         }
         Some("selftest") => cli::cmd_selftest().await,
         Some("bench") => {
-            let results = bench::run_mock_bench().await;
-            let report = bench::report(&results);
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&report).unwrap_or_default()
-            );
-            if report["all_ok"] == true { 0 } else { 1 }
+            let real = args.iter().any(|a| a == "--real-ida");
+            if real {
+                let (results, extras) = bench_real::run_real_bench().await;
+                let report = bench::report_real(&results, &extras);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).unwrap_or_default()
+                );
+                if report["all_ok"] == true { 0 } else { 1 }
+            } else {
+                let results = bench::run_mock_bench().await;
+                let report = bench::report(&results);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&report).unwrap_or_default()
+                );
+                if report["all_ok"] == true { 0 } else { 1 }
+            }
         }
         Some("ida") => match args.get(1).map(String::as_str) {
             Some("list") => cli::cmd_ida_list(args.get(2).map(String::as_str)),

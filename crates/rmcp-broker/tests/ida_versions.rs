@@ -75,8 +75,14 @@ async fn broker_open_with_version_params() {
     // empty version = auto-select; "auto" falls back to mock when the
     // nearest worker binary is mock-only, so both outcomes are valid here —
     // the assertion is that resolution + spawn + handshake all succeed.
+    // idalib strictly requires the input file to exist; create a tiny
+    // scratch file so this test exercises resolution+spawn+handshake
+    // regardless of which backend "auto" selects.
+    let probe_path = std::env::temp_dir().join("selftest-idaver");
+    std::fs::write(&probe_path, b"selftest").expect("write probe file");
+
     let handle = pool
-        .spawn_for("selftest-idaver", 4, "auto", "")
+        .spawn_for(&probe_path.to_string_lossy(), 4, "auto", "")
         .await
         .expect("auto-select open");
     let session = pool.session(&handle).await.expect("session");

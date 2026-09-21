@@ -31,6 +31,21 @@ but *unverified* until #48 lands; do not claim support in release notes.
       - the full #8–#47 regression chain.
 - [ ] Hostile-input triage: any worker crash / unbounded output / hang
       found here is fixed or explicitly bounded before proceeding.
+- [ ] Large-function hierarchical gate (#72): `cargo test -p reverse-mcp
+      --release --features idalib --test largefn_real -- --ignored
+      --test-threads=1` — pass (giant fixture classifies + region evidence
+      + isolation + drill-in + normal control + zero leak).
+- [ ] WASM real-IDA gates (#71): `cargo test -p reverse-mcp --release
+      --features idalib --test wasm_real -- --ignored --test-threads=1` —
+      pass (br_if disassembly + full `ida_wasm` tool actions + malformed
+      bounded failure).
+- [ ] Tier-A logic acceptance (external MCP client path): `cargo test -p
+      reverse-mcp --test logic_acceptance -- --ignored` — pass, zero
+      unsupported confirmed claims.
+- [ ] Tier-B malware acceptance: `cargo test -p reverse-mcp --test
+      malware_acceptance` — pass.
+- [ ] Corpus real (>=20 binaries end-to-end): `cargo test -p reverse-mcp
+      --test corpus_real -- --ignored --test-threads=1` — pass.
 
 ## 3. Long-run reliability
 - [ ] 60-second soak: `cargo test -p rmcp-broker --test soak` — pass.
@@ -40,19 +55,33 @@ but *unverified* until #48 lands; do not claim support in release notes.
 - [ ] 24h soak (v1.0 target): same command, `-Hours 24` — pass.
 
 ## 4. Artifact
+- [ ] `pwsh scripts/check-distribution.ps1` — no proprietary IDA material
+      tracked in Git (extension/name/license-marker scan).
 - [ ] `powershell -File scripts\release.ps1` — runs gates 1 + 4–8 and
       produces:
-      - `target/release/reverse-mcp.exe`
-      - `target/release/reverse-mcp.exe.sha256` (SHA-256)
+      - `target/release/reverse-mcp-v1.0.0-windows-x86_64.zip`
+        (exe + minimal docs only; forbidden-pattern guard rejects IDA
+        proprietary files, keys, corpora, or any second binary)
+      - `target/release/reverse-mcp-v1.0.0-windows-x86_64.zip.sha256`
+- [ ] The release build is the idalib-ENABLED artifact:
+      `cargo build --release -p reverse-mcp --features idalib` (the script
+      refuses to package a mock-only artifact via
+      `reverse-mcp worker --probe-backend idalib`).
 - [ ] Record the hash + build command (`cargo build --release -p
-      reverse-mcp`, toolchain pinned by `rust-toolchain.toml`) in the
-      release notes; the build is reproducible from the tag.
-- [ ] Smoke the artifact on a clean PATH machine:
-      `reverse-mcp doctor`, `reverse-mcp ida list`, open a DB over stdio.
+      reverse-mcp --features idalib`, toolchain pinned by
+      `rust-toolchain.toml`) in the release notes; the build is
+      reproducible from the tag.
+- [ ] Smoke the artifact from a clean extraction directory:
+      verify SHA-256, `reverse-mcp version`, `reverse-mcp doctor`,
+      `reverse-mcp ida list`, start a stdio MCP session, open a real
+      database through the public MCP surface (open/info/functions/
+      decompile/close), confirm clean shutdown with no orphan workers.
+- [ ] `LICENSE` ships in the package (MIT, `Cargo.toml`
+      `workspace.package.license`).
 
 ## 5. Documentation claims (exact wording)
 - [ ] README support line: "Windows x86_64 + IDA Pro 9.2: production
-      supported." Nothing stronger.
+      supported and real-IDA tested." Nothing stronger.
 - [ ] LIMITATIONS platform section matches this claim.
 - [ ] Known unverified items listed (Linux/macOS, other IDA versions,
       packed-sample coverage limits).
