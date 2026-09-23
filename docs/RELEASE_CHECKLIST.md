@@ -1,6 +1,13 @@
 # Windows x86_64 Release Checklist (issue #57)
 
-Target: **Windows x86_64 + IDA Pro 9.2 — production supported.**
+Target: **Windows x86_64 + one IDA ABI per artifact — 9.2 production
+supported; 9.4 available/unverified (build + ABI gates only until its
+real-IDA suite passes on a licensed install).**
+
+Release per backend: `pwsh scripts/release.ps1 -IdaVersion 9.2` (default,
+v1.0-compatible name) or `-IdaVersion 9.4` (artifact name carries `-ida94`;
+the script fails closed if the compiled ABI or registry verification state
+does not match the request).
 Everything else (Linux, macOS, other IDA versions) is architecture-supported
 but *unverified* until #48 lands; do not claim support in release notes.
 

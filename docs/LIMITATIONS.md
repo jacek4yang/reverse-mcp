@@ -5,6 +5,28 @@ Status: accurate as of the `feat/issue49-docs-sync` branch (2026-09-16), after P
 This document exists so the tool set is never overstated. Anything not listed
 under "Shipped" does not work yet.
 
+## Backend status per IDA version (tested-facts policy)
+
+- **IDA 9.2 (backend-9_2)** — verified. v1.0 real-IDA suite green on
+  Windows 11 x86_64 (`idalib-sys 0.7.2+9.2.250908`, SDK 9.2.250908).
+- **IDA 9.4 (backend-9_4)** — **verified** (result matrix in
+  `crates/rmcp-core/src/backend_registry.rs`). Fully built:
+  vendored `idalib94-* 0.10.1+9.4.260714` (upstream idalib-rs commit
+  4f0437a3cff5067738f4645a1e365e139c09156c), ida-sdk v9.4.0-sdk.1
+  (2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb), independent ABI facts
+  (`expected-9_4.json`, generated from the real 9.4 headers — cfunc_t grows
+  184 -> 192), compile+link green, delay-load contract preserved,
+  discovery handles the 9.4 DLLs shipping without PE version resources
+  (uninstall-registry DisplayVersion fallback). Verified on IDA Professional 9.4 build 260714 (Windows 11 x86_64):
+  idalib_real 21/21, wasm_real 2/2, largefn_real, corpus_real (33
+  binaries), real-IDA bench, stdio + HTTP MCP smoke. Known 9.4-specific
+  behaviors: the committed giant_switch_3000.dll cmp-chain shape makes 9.4
+  auto-analysis never terminate (idat -B reproduces) — rebuild it via
+  `scripts/build-fixtures.ps1` before running largefn_real; name-dependent
+  gated fixtures likewise need a local rebuild (their pdbs are gitignored
+  absolute-path references). License compliance for the runtime is the
+  responsibility of the environment producing verification results.
+
 ## Shipped (real, tested)
 
 - Single `reverse-mcp.exe`: broker (MCP stdio / `serve --http`) + self-spawned

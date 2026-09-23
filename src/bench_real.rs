@@ -1,5 +1,6 @@
 //! #50 real-IDA benchmark: the same agent-facing WorkerPool/session paths
-//! as the mock bench, executed against a real licensed IDA 9.2 backend.
+//! as the mock bench, executed against a real licensed IDA backend (9.2 or
+//! 9.4 - whichever ABI this binary was compiled with).
 //!
 //! Hard requirements:
 //! - never silently falls back to mock: if no verified backend resolves,
@@ -18,6 +19,13 @@
 //! Static fixture binaries only; nothing is executed.
 
 use serde_json::{Value, json};
+
+/// The IDA version the real bench requests: the ABI this binary was
+/// compiled with (idalib94 -> 9.4, otherwise the 9.2 default).
+#[cfg(feature = "idalib94")]
+const REQ_IDA_VERSION: &str = "9.4";
+#[cfg(not(feature = "idalib94"))]
+const REQ_IDA_VERSION: &str = "9.2";
 
 use crate::bench::ScenarioResult;
 
@@ -66,7 +74,7 @@ async fn open_real(
             &dst.to_string_lossy(),
             8,
             "idalib",
-            "9.2", // strict pin: no silent fallback to another version
+            REQ_IDA_VERSION, // strict pin: no silent fallback to another version
         )
         .await;
     match opened {

@@ -218,21 +218,25 @@ impl DiscoverySource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackendStatus {
-    /// A backend for this version exists and has been verified locally.
+    /// A backend for this version exists and the real-IDA suite has passed
+    /// on a licensed runtime (registry `verified: true`).
     Ready,
-    /// The version is installed but no verified backend ships yet.
+    /// A backend for this version is known (vendored FFI exists) but its
+    /// real-IDA suite has not passed yet; selection fails closed.
+    AvailableUnverified,
+    /// No backend for this version ships at all.
     Unavailable,
 }
 
-/// The set of minor versions this workspace ships verified backends for.
-/// Derived from the backend registry (`backend_registry::VERIFIED_BACKENDS`),
-/// the single source of truth for backend/version pinning. Adding 9.3 later
-/// means adding a verified `BackendManifest` entry there (plus its crate).
+/// Derived from the backend registry (`backend_registry::KNOWN_BACKENDS`),
+/// the single source of truth for backend/version pinning. Adding 9.5 later
+/// means adding a `BackendManifest` entry there (plus its vendored crate)
+/// and flipping `verified` once the real-IDA suite passes.
 fn backend_status(v: &Version) -> BackendStatus {
-    if crate::backend_registry::is_verified(&v.backend_key()) {
-        BackendStatus::Ready
-    } else {
-        BackendStatus::Unavailable
+    match crate::backend_registry::manifest_for(&v.backend_key()) {
+        Some(m) if m.verified => BackendStatus::Ready,
+        Some(_) => BackendStatus::AvailableUnverified,
+        None => BackendStatus::Unavailable,
     }
 }
 
@@ -525,6 +529,13 @@ fn detect_version(root: &Path, source_hint: Option<&str>) -> Option<Version> {
             return Some(v);
         }
         if let Some(v) = pe_file_version(&root.join(rt.ida)) {
+            return Some(v);
+        }
+        // IDA 9.4+ ships its DLLs without any PE version resource, so an
+        // arbitrary explicit dir (whose name carries no version) needs the
+        // authoritative uninstall-registry DisplayVersion, matched by
+        // InstallLocation.
+        if let Some(v) = registry_version_for_dir(root) {
             return Some(v);
         }
     }
@@ -918,6 +929,59 @@ fn reg_hint_candidates() -> Vec<PathBuf> {
         }
     }
     out
+}
+
+#[cfg(windows)]
+/// Exact version for an explicit install dir from the Windows uninstall
+/// registry, matching entries whose InstallLocation is this dir. Needed for
+/// IDA 9.4+, whose DLLs carry no PE version resource.
+fn registry_version_for_dir(root: &Path) -> Option<Version> {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ};
+    let norm = |p: &Path| -> String {
+        let mut s = p.to_string_lossy().to_lowercase().replace('/', r"\");
+        while s.ends_with('\\') {
+            s.pop();
+        }
+        s
+    };
+    let want = norm(root);
+    let paths = [
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    ];
+    for (hive, path) in [
+        (HKEY_LOCAL_MACHINE, paths[0]),
+        (HKEY_LOCAL_MACHINE, paths[1]),
+        (HKEY_CURRENT_USER, paths[0]),
+    ] {
+        let hk = RegKey::predef(hive);
+        let Ok(key) = hk.open_subkey_with_flags(path, KEY_READ) else {
+            continue;
+        };
+        for sk in key.enum_keys().flatten() {
+            let Ok(sub) = key.open_subkey_with_flags(&sk, KEY_READ) else {
+                continue;
+            };
+            let Ok(loc) = sub.get_value::<String, _>("InstallLocation") else {
+                continue;
+            };
+            if norm(Path::new(&loc)) != want {
+                continue;
+            }
+            if let Ok(display) = sub.get_value::<String, _>("DisplayVersion")
+                && let Some(v) = version_from_name(&display)
+            {
+                return Some(v);
+            }
+            if let Ok(name) = sub.get_value::<String, _>("DisplayName")
+                && let Some(v) = version_from_name(&name)
+            {
+                return Some(v);
+            }
+        }
+    }
+    None
 }
 
 #[cfg(windows)]

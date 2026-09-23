@@ -221,6 +221,9 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
     for inst in &installs {
         let backend = match inst.backend {
             rmcp_core::discovery::BackendStatus::Ready => "backend ready",
+            rmcp_core::discovery::BackendStatus::AvailableUnverified => {
+                "backend available/unverified (real-IDA suite not passed yet)"
+            }
             rmcp_core::discovery::BackendStatus::Unavailable => "backend unavailable",
         };
         let decos = if inst.decompilers.is_empty() {
@@ -246,8 +249,8 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
     // the worker re-verifies at startup via get_library_version().
     println!("ida version check: re-verified by worker at startup (get_library_version)");
 
-    // Backend manifests: pinned SDK/FFI/generator facts per verified backend.
-    for m in rmcp_core::backend_registry::VERIFIED_BACKENDS {
+    // Backend manifests: pinned SDK/FFI/generator facts per known backend.
+    for m in rmcp_core::backend_registry::KNOWN_BACKENDS {
         println!(
             "backend-{}: SDK {} ({}) | ffi: {} | gen: {} | arch: {} | verified: {}",
             m.key,
@@ -275,7 +278,7 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
         } else {
             "other"
         };
-        let registry = rmcp_core::backend_registry::VERIFIED_BACKENDS
+        let registry = rmcp_core::backend_registry::KNOWN_BACKENDS
             .iter()
             .map(|m| {
                 format!(
@@ -286,10 +289,18 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
             })
             .collect::<Vec<_>>()
             .join(" ");
+        let compiled = rmcp_worker::compiled_backend_key()
+            .map(|k| format!("this binary compiles the {k} idalib ABI"))
+            .unwrap_or_else(|| "this binary is mock-only (no idalib feature)".to_string());
+        let verified_windows = rmcp_core::backend_registry::verified_keys()
+            .into_iter()
+            .map(|k| format!("windows-{k}-x86_64: real-IDA suite verified"))
+            .collect::<Vec<_>>()
+            .join("; ");
         println!(
             "platform matrix: host={host_os}-{host_arch}; registry backends: {registry}; \
-             windows-9.2-x86_64: real-IDA suite verified; linux/macos: adapter-ready, \
-             real-IDA acceptance pending (allowed-to-fail CI)"
+             {verified_windows}; linux/macos: adapter-ready, real-IDA acceptance pending \
+             (allowed-to-fail CI); {compiled}"
         );
     }
 
@@ -323,7 +334,15 @@ fn cmd_doctor(ida_dir_override: Option<&str>) -> i32 {
 
     // A backend-ready install must exist for real work.
     if !installs.iter().any(|i| i.backend_ready()) {
-        println!("no backend-ready IDA install (v0.1 verifies 9.2.x only)");
+        let known = rmcp_core::backend_registry::known_keys().join(", ");
+        println!("no backend-ready IDA install (verified backends: {})", {
+            let v = rmcp_core::backend_registry::verified_keys();
+            if v.is_empty() {
+                format!("none of the known {known}")
+            } else {
+                v.join(", ")
+            }
+        });
         ok = false;
     }
 

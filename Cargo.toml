@@ -39,12 +39,19 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
 default = []
-# Real IDA backend via vendored idalib (build-time SDK linkage). The IDA DLLs
+# Real IDA backends via vendored idalib (build-time SDK linkage). The IDA DLLs
 # are delay-loaded so the exe starts without IDA on PATH (see build.rs).
-idalib = ["rmcp-worker/idalib", "dep:idalib", "dep:idalib-build"]
+# Exactly ONE native ABI may be selected per build: the vendored 9.2 and 9.4
+# idalib trees mirror different SDK layouts and must never be linked together
+# (build.rs enforces this at compile time).
+# `idalib` is the v1.0 name and remains an alias for the 9.2 backend.
+idalib = ["idalib92"]
+idalib92 = ["rmcp-worker/idalib92", "dep:idalib", "dep:idalib-build"]
+idalib94 = ["rmcp-worker/idalib94", "dep:idalib94", "dep:idalib94-build"]
 
 [build-dependencies]
 idalib-build = { path = "vendor/idalib-build", optional = true }
+idalib94-build = { path = "vendor/idalib94-build", optional = true }
 
 [dependencies]
 rmcp-broker = { version = "1.0.0", path = "crates/rmcp-broker" }
@@ -60,6 +67,10 @@ wat = "1.259.0"
 
 [dependencies.idalib]
 path = "vendor/idalib"
+optional = true
+
+[dependencies.idalib94]
+path = "vendor/idalib94"
 optional = true
 
 [profile.release]

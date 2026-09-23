@@ -411,7 +411,11 @@ pub struct ctry_t {
     pub is_wind: bool,
 }
 
-/// `cfunc_t` - full layout (size 184).
+/// `cfunc_t` - layout through `treeitems` (all offsets the shims touch live
+/// at or below `maturity`). The 9.4 SDK grows the struct by 8 bytes
+/// (`citem_pointers_t treeitems` + trailing `reserved[]`), hence the
+/// feature-gated tail; the active variant's total size is asserted below
+/// and checked against the per-version ABI fact files.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct cfunc_t {
@@ -433,6 +437,10 @@ pub struct cfunc_t {
     pub hdrlines: i32,
     pub _pad3: u32,
     pub treeitems: qvector<*mut citem_t>,
+    /// 9.4-only trailing bytes (citem_pointers_t is larger than the 9.2
+    /// qvector and the SDK appends a reserved[] tail): sizeof 192 vs 184.
+    #[cfg(feature = "ida94")]
+    pub _ida94_tail: [u8; 8],
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +581,12 @@ const _: () = {
     assert!(core::mem::size_of::<cswitch_t>() == 136);
     assert!(core::mem::size_of::<ctry_t>() == 72);
     assert!(core::mem::size_of::<cthrow_t>() == 64);
+    // cfunc_t layout is version-conditional: 184 in 9.2, 192 in 9.4
+    // (citem_pointers_t + reserved[] tail). See the cfunc_t mirror above.
+    #[cfg(not(feature = "ida94"))]
     assert!(core::mem::size_of::<cfunc_t>() == 184);
+    #[cfg(feature = "ida94")]
+    assert!(core::mem::size_of::<cfunc_t>() == 192);
     assert!(core::mem::size_of::<qstring>() == 24);
 };
 /// Facts verified against the real SDK headers by the C++ ABI probe
@@ -583,14 +596,33 @@ const _: () = {
 mod abi_probe_facts {
     use super::*;
 
-    /// Load `backends/abi/expected-9_2.json` from the repo root. Tests run
-    /// with CARGO_MANIFEST_DIR = crates/reverse-ida-sys.
-    fn expected_json() -> serde_json::Value {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../backends/abi/expected-9_2.json");
-        let raw = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        serde_json::from_str(&raw).expect("parse expected-9_2.json")
+    /// Load every `backends/abi/expected-*.json` fact file from the repo
+    /// root. Tests run with CARGO_MANIFEST_DIR = crates/reverse-ida-sys.
+    /// The mirrors must satisfy EVERY backend's facts simultaneously: if a
+    /// future SDK changes a layout, the per-version probe fails here first
+    /// and the mirror gains a version-gated variant.
+    fn expected_jsons() -> Vec<(String, serde_json::Value)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backends/abi");
+        let mut out = Vec::new();
+        let entries =
+            std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("dir entry").path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            if name.starts_with("expected-") && name.ends_with(".json") {
+                let raw = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+                let json =
+                    serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {name}: {e}"));
+                out.push((name, json));
+            }
+        }
+        assert!(
+            !out.is_empty(),
+            "no expected-*.json fact files found in {}",
+            dir.display()
+        );
+        out
     }
 
     fn fact(json: &serde_json::Value, family: &str, name: &str) -> u64 {
@@ -601,68 +633,113 @@ mod abi_probe_facts {
 
     #[test]
     fn rust_mirrors_match_expected_abi_facts() {
-        let json = expected_json();
+        for (file, json) in expected_jsons() {
+            check_invariant_facts(&file, &json);
+        }
+        // cfunc_t is version-conditional (184 in 9.2, 192 in 9.4), so its
+        // facts are checked against the file matching the compiled variant.
+        let (file, json) = if cfg!(feature = "ida94") {
+            let jsons = expected_jsons();
+            jsons
+                .into_iter()
+                .find(|(n, _)| n == "expected-9_4.json")
+                .expect("expected-9_4.json present for the ida94 mirror variant")
+        } else {
+            let jsons = expected_jsons();
+            jsons
+                .into_iter()
+                .find(|(n, _)| n == "expected-9_2.json")
+                .expect("expected-9_2.json present for the default mirror variant")
+        };
+        check_cfunc_facts(&file, &json);
+    }
 
-        assert_eq!(
-            core::mem::size_of::<range_t>() as u64,
-            fact(&json, "sizeof", "range_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<op_t>() as u64,
-            fact(&json, "sizeof", "op_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<insn_t>() as u64,
-            fact(&json, "sizeof", "insn_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<argloc_t>() as u64,
-            fact(&json, "sizeof", "argloc_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<tinfo_t>() as u64,
-            fact(&json, "sizeof", "tinfo_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<lvar_t>() as u64,
-            fact(&json, "sizeof", "lvar_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<qstring>() as u64,
-            fact(&json, "sizeof", "qstring")
-        );
-        assert_eq!(
-            core::mem::size_of::<citem_t>() as u64,
-            fact(&json, "sizeof", "citem_t")
-        );
-        assert_eq!(
-            core::mem::size_of::<cexpr_t>() as u64,
-            fact(&json, "sizeof", "cexpr_t")
-        );
+    fn check_cfunc_facts(file: &str, json: &serde_json::Value) {
         assert_eq!(
             core::mem::size_of::<cfunc_t>() as u64,
-            fact(&json, "sizeof", "cfunc_t")
-        );
-
-        assert_eq!(
-            core::mem::offset_of!(op_t, n) as u64,
-            fact(&json, "offsetof", "op_t.n")
-        );
-        assert_eq!(
-            core::mem::offset_of!(op_t, specflag4) as u64,
-            fact(&json, "offsetof", "op_t.specflag4")
-        );
-        assert_eq!(
-            core::mem::offset_of!(citem_t, ea) as u64,
-            fact(&json, "offsetof", "citem_t.ea")
-        );
-        assert_eq!(
-            core::mem::offset_of!(cexpr_t, typ) as u64,
-            fact(&json, "offsetof", "cexpr_t.type")
+            fact(json, "sizeof", "cfunc_t"),
+            "sizeof cfunc_t mismatch against {file}"
         );
         assert_eq!(
             core::mem::offset_of!(cfunc_t, maturity) as u64,
-            fact(&json, "offsetof", "cfunc_t.maturity")
+            fact(json, "offsetof", "cfunc_t.maturity"),
+            "offsetof cfunc_t.maturity mismatch against {file}"
+        );
+    }
+
+    fn check_invariant_facts(file: &str, json: &serde_json::Value) {
+        let assert_eq_file = |what: &str, actual: u64, expected: u64| {
+            assert_eq!(
+                actual, expected,
+                "{what} mismatch against {file}: mirror says {actual}, SDK facts say {expected}"
+            );
+        };
+
+        assert_eq_file(
+            "sizeof range_t",
+            core::mem::size_of::<range_t>() as u64,
+            fact(json, "sizeof", "range_t"),
+        );
+        assert_eq_file(
+            "sizeof op_t",
+            core::mem::size_of::<op_t>() as u64,
+            fact(json, "sizeof", "op_t"),
+        );
+        assert_eq_file(
+            "sizeof insn_t",
+            core::mem::size_of::<insn_t>() as u64,
+            fact(json, "sizeof", "insn_t"),
+        );
+        assert_eq_file(
+            "sizeof argloc_t",
+            core::mem::size_of::<argloc_t>() as u64,
+            fact(json, "sizeof", "argloc_t"),
+        );
+        assert_eq_file(
+            "sizeof tinfo_t",
+            core::mem::size_of::<tinfo_t>() as u64,
+            fact(json, "sizeof", "tinfo_t"),
+        );
+        assert_eq_file(
+            "sizeof lvar_t",
+            core::mem::size_of::<lvar_t>() as u64,
+            fact(json, "sizeof", "lvar_t"),
+        );
+        assert_eq_file(
+            "sizeof qstring",
+            core::mem::size_of::<qstring>() as u64,
+            fact(json, "sizeof", "qstring"),
+        );
+        assert_eq_file(
+            "sizeof citem_t",
+            core::mem::size_of::<citem_t>() as u64,
+            fact(json, "sizeof", "citem_t"),
+        );
+        assert_eq_file(
+            "sizeof cexpr_t",
+            core::mem::size_of::<cexpr_t>() as u64,
+            fact(json, "sizeof", "cexpr_t"),
+        );
+
+        assert_eq_file(
+            "offsetof op_t.n",
+            core::mem::offset_of!(op_t, n) as u64,
+            fact(json, "offsetof", "op_t.n"),
+        );
+        assert_eq_file(
+            "offsetof op_t.specflag4",
+            core::mem::offset_of!(op_t, specflag4) as u64,
+            fact(json, "offsetof", "op_t.specflag4"),
+        );
+        assert_eq_file(
+            "offsetof citem_t.ea",
+            core::mem::offset_of!(citem_t, ea) as u64,
+            fact(json, "offsetof", "citem_t.ea"),
+        );
+        assert_eq_file(
+            "offsetof cexpr_t.type",
+            core::mem::offset_of!(cexpr_t, typ) as u64,
+            fact(json, "offsetof", "cexpr_t.type"),
         );
     }
 }

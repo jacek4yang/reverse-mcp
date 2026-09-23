@@ -4,10 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hand-written FFI layout definitions for the IDA 9.2 SDK types that generated bindings render opaque"
+description = "Hand-written FFI layout definitions for the IDA 9.x SDK types that generated bindings render opaque"
 
 [dependencies.cxx]
 version = "1"
 
 [dev-dependencies.serde_json]
 version = "1"
+
+[features]
+default = []
+# Select the cfunc_t mirror variant (9.4 grows the struct tail by 8 bytes;
+# every other mirrored layout is identical across 9.2/9.4). Activated by the
+# vendored idalib94-sys dependency; the default (no feature) mirrors 9.2,
+# which is also what standalone mock builds verify against.
+ida94 = []

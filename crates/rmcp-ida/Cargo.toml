@@ -20,6 +20,22 @@ optional = true
 version = "0.27"
 optional = true
 
+[dependencies.idalib94]
+path = "../../vendor/idalib94"
+optional = true
+
+# autocxx-idalib is the idalib-rs fork of autocxx that the 9.4 vendored tree
+# generates its bindings with; the c_ulonglong/c_int wrapper types must come
+# from the same autocxx instance as idalib94's, hence the alias here.
+[dependencies.autocxx94]
+package = "autocxx-idalib"
+version = "0.30"
+optional = true
+
 [features]
-idalib = ["dep:idalib", "dep:autocxx"]
 default = []
+# Exactly one native IDA ABI per build (see the root workspace features).
+idalib92 = ["dep:idalib", "dep:autocxx"]
+idalib94 = ["dep:idalib94", "dep:autocxx94"]
+# v1.0 name; alias for the 9.2 backend.
+idalib = ["idalib92"]

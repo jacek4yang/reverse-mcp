@@ -7,7 +7,9 @@ Status: accurate as of commit `b8fe1cd` (2026-09-15), main branch.
 ```
 agent ←→ broker (reverse-mcp.exe serve, MCP stdio)
               └→ spawns itself in `worker` mode per open DB
-                    └→ idalib (IDA 9.2 native FFI, one IDB per process)
+                    └→ idalib (native FFI, one IDB per process; one IDA
+                       ABI per build: 9.2 via --features idalib92, 9.4 via
+                       --features idalib94 - mutually exclusive)
                           └→ Hex-Rays decompiler
 ```
 
@@ -28,13 +30,21 @@ One distributed binary: `reverse-mcp.exe`. Subcommands:
 src/                  combined binary: broker (serve) + worker + CLI
 crates/rmcp-core/     domain model: backend trait, config, discovery, errors,
                       handles, protocol frames, result store
-crates/rmcp-ida/      backends: MockBackend (default) + IdaLibBackend (feature idalib)
+crates/rmcp-ida/      backends: MockBackend (default) + IdaLibBackend
+                      (features idalib92 / idalib94; a module-level
+                      `use idalib94 as idalib` alias binds the backend to
+                      whichever vendored ABI was selected at build time)
 crates/rmcp-worker/   worker library (dispatch + state); no separate binary
 crates/rmcp-broker/   MCP ServerHandler, tool registry, WorkerPool
 crates/reverse-ida-sys/  hand-written #[repr(C)] IDA SDK layouts + static
                       layout assertions (op_t, func_t, segment_t, ...)
-vendor/               gitignored-SDK-dependent: idalib 0.7.2, idalib-sys, idalib-build
-vendor/idalib-sys/sdk/  IDA 9.2 SDK headers/libs — PROPRIETARY, gitignored, never committed
+vendor/               gitignored-SDK-dependent (two independent ABI trees):
+                        9.2: idalib 0.7.2+9.2.250908, idalib-sys, idalib-build
+                        9.4: idalib94/idalib94-sys/idalib94-build/idalib94-macros
+                             0.10.1+9.4.260714 (renamed from upstream
+                             idalib-rs/idalib v0.10.1+9.4.260714)
+vendor/idalib-sys/sdk/    IDA 9.2 SDK (v9.2.0-sdk.1) — PROPRIETARY, gitignored
+vendor/idalib94-sys/sdk/  IDA 9.4 SDK (v9.4.0-sdk.1) — PROPRIETARY, gitignored
 tests/                cli.rs (mock), idalib_real.rs (real IDA, --ignored, gated)
 scripts/check-distribution.ps1  proprietary-file scan
 .github/workflows/ci.yml        windows-latest: fmt, clippy -D warnings, mock tests
@@ -52,7 +62,9 @@ Multi-version discovery resolves an install before any worker starts:
 6. `ida.reg` hints
 7. cached drive-root scan
 
-Version is read from the PE version resource of `idalib.dll` (ida.dll carries no
+Version is read from the PE version resource of `idalib.dll` (9.4 ships its
+DLLs without any version resource, so discovery falls back to the
+uninstall-registry DisplayVersion matched by InstallLocation; ida.dll carries no
 version resource), falling back to directory-name hints. The backend claims one
 verified version key: `9_2`. Every other discovered version reports
 `backend unavailable` and `ida_db open` refuses it with `ida_version_mismatch` —
