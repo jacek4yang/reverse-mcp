@@ -45,24 +45,32 @@ jobs:
       - name: Tests (mock backend, no IDA required)
         run: cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
 
+      # Mirror-variant check for the 9.4 backend: runs the same layout tests
+      # with the ida94 cfunc_t mirror variant selected (mock only, no SDK).
+      - name: Mirror tests (ida94 variant)
+        run: cargo test -p reverse-ida-sys --features ida94
+
       - name: Build release binaries (mock)
         run: cargo build --release -p reverse-mcp -p rmcp-worker
 
       # Public CI cannot run the real ABI probe (needs proprietary SDK
-      # headers) but it CAN verify the checked-in expected-fact file stays
+      # headers) but it CAN verify the checked-in expected-fact files stay
       # consistent with the Rust mirrors: backend facts are re-checked by
       # the rmcp-core unit tests above; the structural JSON check catches
       # hand-edits that drop facts.
       - name: ABI fact file structure
         shell: pwsh
         run: |
-          $j = Get-Content backends/abi/expected-9_2.json -Raw | ConvertFrom-Json
-          if (-not $j.sdk.version -eq '9.2') { throw "sdk.version must be 9.2" }
-          foreach ($family in @('sizeof','alignof','offsetof')) {
-            $n = ($j.probes.$family.PSObject.Properties | Measure-Object).Count
-            if ($n -lt 1) { throw "probes.$family must not be empty" }
+          foreach ($f in @('expected-9_2.json', 'expected-9_4.json')) {
+            $v = if ($f -eq 'expected-9_2.json') { '9.2' } else { '9.4' }
+            $j = Get-Content "backends/abi/$f" -Raw | ConvertFrom-Json
+            if (-not $j.sdk.version -eq $v) { throw "$f sdk.version must be $v" }
+            foreach ($family in @('sizeof','alignof','offsetof')) {
+              $n = ($j.probes.$family.PSObject.Properties | Measure-Object).Count
+              if ($n -lt 1) { throw "$f probes.$family must not be empty" }
+            }
+            Write-Host "$f structure OK"
           }
-          Write-Host "expected-9_2.json structure OK"
 
       - name: Distribution check (no proprietary material)
         shell: pwsh

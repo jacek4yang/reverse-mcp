@@ -344,8 +344,9 @@ impl WorkerPool {
                 return Err(Error::CapabilityUnavailable {
                     capability: "idalib".into(),
                     reason: format!(
-                        "IDA {} is installed but no verified backend ships for it (only 9.2); pick another version or upgrade reverse-mcp",
-                        install.version
+                        "IDA {} is installed but no verified backend ships for it (verified: {}); pick another version or upgrade reverse-mcp",
+                        install.version,
+                        rmcp_core::backend_registry::verified_keys().join(", ")
                     ),
                 });
             } else if backend_kind == "auto" {

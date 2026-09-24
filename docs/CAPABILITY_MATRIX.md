@@ -9,6 +9,12 @@ that time; re-audit before relying on a competitor row).
 Scope note: competitor rows summarize publicly documented capabilities at the
 capability-group level; they are audit targets, not benchmarks of code quality.
 
+IDA-version note: every "real-IDA tested" claim below refers to the verified
+9.2 backend. The 9.4 backend (backend-9_4) compiles the same code paths
+against its own vendored ABI and passes the same mock/unit gates plus its own
+ABI probe; its real-IDA verification is pending a licensed 9.4 install - see
+docs/LIMITATIONS.md.
+
 | Capability | reverse-mcp | ida-pro-mcp (mrexodia) | ida-mcp (debugpro) | ida-pro-mcp (GrecAndrei) | ida-fast-mcp | hrtng | HexRaysPyTools | findcrypt-yara | BinDiff |
 |---|---|---|---|---|---|---|---|---|---|
 | runtime/session | implemented, real-IDA tested ([worker pool](../crates/rmcp-broker/src/worker_pool.rs)) | implemented (in-process plugin) | implemented | implemented | implemented | n/a (IDA plugin) | n/a | n/a | separate GUI tool |

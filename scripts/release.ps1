@@ -24,7 +24,14 @@ $python = Get-Command python -ErrorAction SilentlyContinue
 if (-not $python) { throw "python not found on PATH" }
 $git = Get-Command git -ErrorAction SilentlyContinue
 if (-not $git) { throw "git not found on PATH" }
+$feature = switch ($IdaVersion) {
+    "9.2" { "idalib92" }
+    "9.4" { "idalib94" }
+    default { throw "unsupported -IdaVersion '$IdaVersion' (expected 9.2 or 9.4)" }
+}
+$backendKey = $IdaVersion -replace '\.', '_'
 Write-Host "tools: cargo=$($cargo.Source)"
+Write-Host "       backend: ida $IdaVersion (feature $feature)"
 Write-Host "       python=$($python.Source)"
 Write-Host "       git=$($git.Source)"
 

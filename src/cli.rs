@@ -271,6 +271,7 @@ pub fn cmd_ida_list(explicit: Option<&str>) -> i32 {
     for inst in &installs {
         let backend = match inst.backend {
             rmcp_core::discovery::BackendStatus::Ready => "ready",
+            rmcp_core::discovery::BackendStatus::AvailableUnverified => "available/unverified",
             rmcp_core::discovery::BackendStatus::Unavailable => "unavailable",
         };
         let decos = if inst.decompilers.is_empty() {

@@ -127,19 +127,44 @@ fn dispatch(
                     Ok(json!({"backend": "mock"}))
                 }
                 "idalib" => {
-                    #[cfg(feature = "idalib")]
+                    #[cfg(any(feature = "idalib92", feature = "idalib94"))]
                     {
                         // idalib requires init + all calls on the main thread;
                         // worker dispatch runs on main, so this is satisfied.
+                        #[cfg(feature = "idalib94")]
+                        use idalib94 as idalib;
                         idalib::init_library();
                         idalib::enable_console_messages(false);
+
+                        // Fail closed: verify the runtime IDA matches the ABI
+                        // this worker was compiled for BEFORE any database
+                        // operation can run against mismatched layouts.
+                        let compiled = crate::compiled_backend_key().expect(
+                            "compiled_backend_key is Some whenever an idalib feature is on",
+                        );
+                        let runtime =
+                            idalib::version().map_err(|e| Error::CapabilityUnavailable {
+                                capability: "idalib".into(),
+                                reason: format!("IDA runtime version unavailable: {e:?}"),
+                            })?;
+                        let runtime_key = format!("{}_{}", runtime.major(), runtime.minor());
+                        if runtime_key != compiled {
+                            return Err(Error::CapabilityUnavailable {
+                                capability: "idalib".into(),
+                                reason: format!(
+                                    "worker compiled for IDA backend {compiled} but the loaded \
+                                     IDA runtime reports {runtime_key}; refusing to mix ABIs"
+                                ),
+                            });
+                        }
+
                         state.backend = Some(Box::new(rmcp_ida::IdaLibBackend::new()));
-                        Ok(json!({"backend": "idalib"}))
+                        Ok(json!({"backend": "idalib", "ida": runtime_key}))
                     }
-                    #[cfg(not(feature = "idalib"))]
+                    #[cfg(not(any(feature = "idalib92", feature = "idalib94")))]
                     Err(Error::CapabilityUnavailable {
                         capability: "idalib".into(),
-                        reason: "worker not built with the idalib feature".into(),
+                        reason: "worker not built with an idalib feature".into(),
                     })
                 }
                 other => Err(Error::Worker(format!(

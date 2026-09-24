@@ -23,14 +23,38 @@ pub mod types;
 pub mod valuean;
 pub mod workflow;
 
+#[cfg(all(feature = "idalib92", feature = "idalib94"))]
+compile_error!(
+    "features `idalib92` and `idalib94` are mutually exclusive: pick exactly one IDA ABI per build"
+);
+
 /// Capability probe: does this build support backend `kind`? The broker runs
 /// `<exe> --probe-backend <kind>` to detect the real idalib backend without
 /// spawning a session.
 pub fn probe_backend(kind: &str) -> bool {
     match kind {
         "mock" => true,
-        "idalib" => cfg!(feature = "idalib"),
+        "idalib" => cfg!(any(feature = "idalib92", feature = "idalib94")),
         _ => false,
+    }
+}
+
+/// The IDA ABI this worker binary was compiled against, as a backend registry
+/// key (`"9_2"` / `"9_4"`); `None` for mock-only builds. Reported in the
+/// worker hello so the broker can refuse version-matched work before any IDA
+/// runtime is touched.
+pub const fn compiled_backend_key() -> Option<&'static str> {
+    #[cfg(feature = "idalib92")]
+    {
+        Some("9_2")
+    }
+    #[cfg(feature = "idalib94")]
+    {
+        Some("9_4")
+    }
+    #[cfg(not(any(feature = "idalib92", feature = "idalib94")))]
+    {
+        None
     }
 }
 

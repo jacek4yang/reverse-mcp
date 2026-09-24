@@ -1,8 +1,8 @@
-# run-abi-probe.ps1 - ABI verification for the pinned IDA 9.2 backend.
+# run-abi-probe.ps1 - ABI verification for the pinned IDA backends.
 #
-# Generates backends/abi/expected_facts.inc from
-# backends/abi/expected-9_2.json, then COMPILES backends/abi/abi_probe.cpp
-# against the vendored SDK headers. The probe is a compile-time contract:
+# Generates backends/abi/expected_facts.inc from the selected backend's
+# expected-<key>.json, then COMPILES backends/abi/abi_probe.cpp against
+# that backend's vendored SDK headers. The probe is a compile-time contract:
 # every sizeof/alignof/offsetof is a static_assert, so a layout mismatch
 # fails the build with the offending fact named. Nothing is linked or run,
 # so no proprietary SDK libraries or symbols are involved.
@@ -12,6 +12,7 @@
 # of truth.
 #
 # Usage:
+#   pwsh scripts/run-abi-probe.ps1 -IdaVersion 9.4   # 9.4 backend (default 9.2)
 #   pwsh scripts/run-abi-probe.ps1                    # auto-find clang++
 #   pwsh scripts/run-abi-probe.ps1 -Clang <path>      # explicit driver
 #   pwsh scripts/run-abi-probe.ps1 -Clang <zig-path>  # zig c++ driver works
@@ -19,10 +20,22 @@
 
 param(
     [string]$Clang = "",
-    [string]$ExpectedPath = "backends/abi/expected-9_2.json"
+    [string]$IdaVersion = "9.2",
+    [string]$ExpectedPath = ""
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Backend selection: -IdaVersion maps to the vendored SDK dir + fact file.
+# -ExpectedPath still overrides for one-off probes.
+$sdkDir = switch ($IdaVersion) {
+    "9.2" { "vendor/idalib-sys/sdk" }
+    "9.4" { "vendor/idalib94-sys/sdk" }
+    default { throw "unsupported -IdaVersion '$IdaVersion' (expected 9.2 or 9.4)" }
+}
+if ($ExpectedPath -eq "") {
+    $ExpectedPath = "backends/abi/expected-$($IdaVersion -replace '\.', '_').json"
+}
 
 function Find-Clang {
     param([string]$Requested)
@@ -62,8 +75,8 @@ $invoke = {
     }
 }
 
-if (-not (Test-Path "vendor/idalib-sys/sdk/src/include/pro.h")) {
-    Write-Error "SDK headers not found under vendor/idalib-sys/sdk (proprietary, not in git). Provide a local IDA 9.2 SDK checkout."
+if (-not (Test-Path "$sdkDir/src/include/pro.h")) {
+    Write-Error "SDK headers not found under $sdkDir (proprietary, not in git). Provide a local IDA $IdaVersion SDK checkout (pinned tag in the backend manifest)."
 }
 
 $expected = Get-Content $ExpectedPath -Raw | ConvertFrom-Json
@@ -93,7 +106,7 @@ $obj = "backends/abi/abi_probe.o"
 $compileArgs = @()
 $compileArgs += $platformFlags
 $compileArgs += @("-Wno-invalid-offsetof", "-c")
-$compileArgs += @("-Ivendor/idalib-sys/sdk/src/include", "-Ibackends/abi", "backends/abi/abi_probe.cpp", "-o", $obj)
+$compileArgs += @("-I$sdkDir/src/include", "-Ibackends/abi", "backends/abi/abi_probe.cpp", "-o", $obj)
 & $invoke $compileArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ABI PROBE FAILED: the SDK headers do not match $ExpectedPath" -ForegroundColor Red

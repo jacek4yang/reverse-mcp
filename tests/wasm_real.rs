@@ -9,6 +9,15 @@
 use std::path::PathBuf;
 
 use rmcp_broker::WorkerPool;
+
+/// The IDA version the real-IDA suites request: the ABI this test binary
+/// was compiled with (idalib94 -> 9.4, otherwise the 9.2 default). Strict
+/// pin either way - no silent fallback to another version.
+#[cfg(feature = "idalib94")]
+const REQ_IDA_VERSION: &str = "9.4";
+#[cfg(not(feature = "idalib94"))]
+const REQ_IDA_VERSION: &str = "9.2";
+
 use serde_json::json;
 
 fn worker_exe() -> PathBuf {
@@ -49,7 +58,7 @@ async fn wasm_db_full_chain() {
     .expect("copy fixture");
 
     let h = pool
-        .spawn_for(&wasm.to_string_lossy(), 2, "idalib", "9.2")
+        .spawn_for(&wasm.to_string_lossy(), 2, "idalib", REQ_IDA_VERSION)
         .await
         .expect("idalib open of wasm fixture");
     let session = pool.session(&h).await.expect("session");
@@ -148,7 +157,7 @@ async fn wasm_ida_wasm_tool_actions() {
     let open = rmcp_broker::registry::call(
         &broker,
         "ida_db",
-        json!({"action": "open", "path": wasm.to_string_lossy(), "backend": "idalib", "ida_version": "9.2"}),
+        json!({"action": "open", "path": wasm.to_string_lossy(), "backend": "idalib", "ida_version": REQ_IDA_VERSION}),
     )
     .await
     .expect("open wasm via idalib");
@@ -286,7 +295,7 @@ async fn wasm_ida_wasm_tool_actions() {
     let open_bad = rmcp_broker::registry::call(
         &broker,
         "ida_db",
-        json!({"action": "open", "path": bad.to_string_lossy(), "backend": "idalib", "ida_version": "9.2"}),
+        json!({"action": "open", "path": bad.to_string_lossy(), "backend": "idalib", "ida_version": REQ_IDA_VERSION}),
     )
     .await;
     let bad_handle = match open_bad {

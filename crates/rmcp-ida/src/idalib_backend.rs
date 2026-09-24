@@ -1,13 +1,20 @@
-//! Real IDA backend backed by the vendored `idalib` crate (IDA 9.2 idalib).
+//! Real IDA backend backed by the vendored idalib crates.
 //!
-//! Compiled only with the `idalib` feature. All calls run on the worker's
-//! main thread - idalib requires every database operation to happen on the
-//! thread that initialized the library, and worker dispatch is synchronous
-//! on `main`, which satisfies that constraint.
+//! Compiled with the `idalib92` (alias `idalib`) or `idalib94` feature: the
+//! module-level aliases below bind the `idalib::`/`autocxx::` paths in this
+//! file to whichever vendored ABI was selected at build time. All calls run
+//! on the worker's main thread - idalib requires every database operation to
+//! happen on the thread that initialized the library, and worker dispatch is
+//! synchronous on `main`, which satisfies that constraint.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
+
+#[cfg(feature = "idalib94")]
+use autocxx94 as autocxx;
+#[cfg(feature = "idalib94")]
+use idalib94 as idalib;
 
 use idalib::idb::{IDB, IDBOpenOptions};
 use idalib::xref::XRefQuery;

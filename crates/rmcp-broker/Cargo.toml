@@ -28,7 +28,11 @@ bytes = "1"
 
 [features]
 default = []
-idalib = ["rmcp-ida/idalib", "dep:rmcp-ida"]
+# The broker never links IDA itself; these exist so standalone broker builds
+# can embed a real backend. `idalib` is the v1.0 name (9.2 alias).
+idalib92 = ["rmcp-ida/idalib92", "dep:rmcp-ida"]
+idalib94 = ["rmcp-ida/idalib94", "dep:rmcp-ida"]
+idalib = ["idalib92"]
 
 [dependencies.rmcp-ida]
 path = "../rmcp-ida"

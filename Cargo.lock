@@ -112,12 +112,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "autocxx-bindgen-idalib"
+version = "0.73.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dae0a8f0d2d8fde6382277103079e06b5066686555eecf7e993f3d7de247ef41"
+dependencies = [
+ "bitflags",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.13.0",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash",
+ "shlex 1.3.0",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "autocxx-build"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d123397e75f904758fef490775a00b0ada545ab409cb0163d919799e5a30119b"
 dependencies = [
  "autocxx-engine",
+ "env_logger",
+ "indexmap 1.9.3",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "autocxx-build-idalib"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ee9bf217089da6c12e035a7de8092e85485da0761d064707552dafa51fb54c8"
+dependencies = [
+ "autocxx-engine-idalib",
  "env_logger",
  "indexmap 1.9.3",
  "syn 2.0.119",
@@ -153,6 +185,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "autocxx-engine-idalib"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "236fffe3b149da16cbb86eb1e455d96ffbc7142a1aafea2e21c54a517d56c190"
+dependencies = [
+ "aquamarine",
+ "autocxx-bindgen-idalib",
+ "autocxx-parser-idalib",
+ "cc",
+ "cxx-gen",
+ "indexmap 1.9.3",
+ "indoc",
+ "itertools 0.10.5",
+ "log",
+ "miette",
+ "once_cell",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "regex_static",
+ "rustversion",
+ "serde_json",
+ "syn 2.0.119",
+ "tempfile",
+ "thiserror 1.0.69",
+ "version_check",
+]
+
+[[package]]
+name = "autocxx-idalib"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6adb464c6f6c83f6d3af4b90dc77c3fb7247d19e2e3b209ffa321a1095ccbb5e"
+dependencies = [
+ "aquamarine",
+ "autocxx-macro-idalib",
+ "cxx",
+ "moveit",
+]
+
+[[package]]
 name = "autocxx-macro"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -166,10 +240,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "autocxx-macro-idalib"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5175c6b13752bc2a26e155ecd53f57aacc057293ab681727b215a4b84d46c32"
+dependencies = [
+ "autocxx-parser-idalib",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "autocxx-parser"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cbe64c4c35a76ef3229505d336b3eef29e95b28f457b75e0f84b456a8107af9"
+dependencies = [
+ "indexmap 1.9.3",
+ "itertools 0.10.5",
+ "log",
+ "once_cell",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "autocxx-parser-idalib"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6559f51857e027480c2fc09214436f0c8e5d08e7f512ea0ec80c8ad34245b83a"
 dependencies = [
  "indexmap 1.9.3",
  "itertools 0.10.5",
@@ -840,6 +945,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "idalib94"
+version = "0.10.1+9.4.260714"
+dependencies = [
+ "anyhow",
+ "autocxx-idalib",
+ "bitflags",
+ "cxx",
+ "idalib94-build",
+ "idalib94-macros",
+ "idalib94-sys",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "idalib94-build"
+version = "0.10.1+9.4.260714"
+dependencies = [
+ "anyhow",
+ "idalib94-sys",
+]
+
+[[package]]
+name = "idalib94-macros"
+version = "0.10.1+9.4.260714"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "idalib94-sys"
+version = "0.10.1+9.4.260714"
+dependencies = [
+ "anyhow",
+ "autocxx-bindgen-idalib",
+ "autocxx-build-idalib",
+ "autocxx-idalib",
+ "bitflags",
+ "cxx",
+ "cxx-build",
+ "libc",
+ "objc2",
+ "reverse-ida-sys",
+ "thiserror 1.0.69",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1099,6 +1254,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a12a8ed07aefc768292f076dc3ac8c48f3781c8f2d5851dd3d98950e8c5a89f"
+dependencies = [
+ "objc2-encode",
+]
+
+[[package]]
+name = "objc2-encode"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1266,7 +1436,7 @@ dependencies = [
  "aho-corasick",
  "memchr",
  "regex-automata",
- "regex-syntax",
+ "regex-syntax 0.8.11",
 ]
 
 [[package]]
@@ -1277,14 +1447,54 @@ checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax",
+ "regex-syntax 0.8.11",
 ]
+
+[[package]]
+name = "regex-syntax"
+version = "0.6.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "regex_static"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6126d61c5e4b41929098f73b42fc1d257116cc95d19739248c51591f77cc0021"
+dependencies = [
+ "once_cell",
+ "regex",
+ "regex_static_macro",
+]
+
+[[package]]
+name = "regex_static_impl"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c3755019886a70e772e6360b0b58501d75cf7dc17a53e08aa97e59ecb2c2bc5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "regex-syntax 0.6.29",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "regex_static_macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79b15495fd034158635bc8b762a132dfc83864d6992aeda1ffabf01b03b611a1"
+dependencies = [
+ "proc-macro2",
+ "regex_static_impl",
+ "syn 1.0.109",
+]
 
 [[package]]
 name = "reverse-ida-sys"
@@ -1300,6 +1510,8 @@ version = "1.0.0"
 dependencies = [
  "idalib",
  "idalib-build",
+ "idalib94",
+ "idalib94-build",
  "rmcp",
  "rmcp-broker",
  "rmcp-core",
@@ -1383,7 +1595,9 @@ name = "rmcp-ida"
 version = "1.0.0"
 dependencies = [
  "autocxx",
+ "autocxx-idalib",
  "idalib",
+ "idalib94",
  "rmcp-core",
  "serde",
  "serde_json",
@@ -1422,6 +1636,7 @@ name = "rmcp-worker"
 version = "1.0.0"
 dependencies = [
  "idalib",
+ "idalib94",
  "rmcp-core",
  "rmcp-ida",
  "serde",

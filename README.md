@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/jacek4yang/reverse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jacek4yang/reverse-mcp/actions/workflows/ci.yml)
 
-MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** - a single `reverse-mcp.exe` (broker + self-spawned workers in the same binary) driving IDA through its native idalib API (no `idat`, no Python).
+MCP server that gives AI agents headless, programmatic control over **IDA Pro 9.2** and **IDA Pro 9.4** (both verified, real-IDA tested on Windows 11 x86_64) - a single `reverse-mcp.exe` (broker + self-spawned workers in the same binary) driving IDA through its native idalib API (no `idat`, no Python). One IDA ABI per build: `--features idalib92` / `--features idalib94` (`idalib` remains the 9.2 alias).
 
 - Architecture details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Tool reference: [`docs/MCP_TOOLS.md`](docs/MCP_TOOLS.md)
@@ -66,7 +66,7 @@ agent ←→ broker (reverse-mcp.exe serve, MCP stdio or `serve --http 127.0.0.1
 
 - **One worker per DB** - IDA's idalib is single-threaded per database; the broker serializes requests and enforces `max_workers`.
 - **Portable layout** - everything lives next to the exe (`plugins\`, `cache\`, `logs\`, `reverse-mcp.toml`). Plugins come only from the exe-relative `plugins\` dir (via `IDAUSR`); the IDA install dir and `%APPDATA%\.idapro` are never touched.
-- **Multi-version aware** -`reverse-mcp ida list` shows every discovered install with a backend status. v0.1 ships a verified backend for 9.2 only; other versions are discovered and reported as `backend unavailable`, never silently driven.
+- **Multi-version aware** -`reverse-mcp ida list` shows every discovered install with a backend status. Verified backends: 9.2 and 9.4; other versions are discovered and reported as `backend unavailable`, never silently driven.
 
 ## Discovery order
 
@@ -91,7 +91,9 @@ exists for its version - other versions are never silently driven.
 Layout correctness is enforced by an **ABI probe** (`backends/abi/`): the
 C++ contract file is compiled against the exact vendored SDK headers and
 static_asserts every recorded sizeof/alignof/offsetof from
-`backends/abi/expected-9_2.json`; the same JSON is checked against the Rust
+`backends/abi/expected-9_2.json` (9.4: `expected-9_4.json`, generated from
+the pinned 9.4 SDK headers via `backends/abi/abi_dump.cpp`); the same JSON is
+checked against the Rust
 mirrors in `crates/reverse-ida-sys` unit tests, so C++ and Rust are verified
 against one source of truth. Run it locally with
 `pwsh scripts/run-abi-probe.ps1` (needs the SDK headers + any clang++, the
@@ -108,15 +110,17 @@ manifests, ABI-probe status, and discovered installs.
 
 ## Prerequisites
 
-- Windows x86_64: production supported with IDA Pro 9.2 — production
-  supported and real-IDA tested (real-IDA gated suite, hostile-input
-  corpus, Tier-A/Tier-B acceptance, real-IDA benchmark and soak gates all
-  green). Linux/macOS:
+- Windows x86_64 + IDA Pro 9.2 and IDA Pro 9.4: production supported and
+  real-IDA tested (real-IDA gated suites, hostile-input corpus, Tier-B
+  acceptance spot-checks, real-IDA benchmark, stdio + HTTP MCP smoke all
+  green on both ABIs; 9.2 soak gates from v1.0, 9.4 soak pending — see
+  docs/RELEASE_CHECKLIST.md). Linux/macOS:
   architecture-supported, real-IDA acceptance pending (#48) — OS specifics
   are isolated behind the unit-tested `rmcp_core::platform` adapter, and CI
   runs a Linux build/mock job (allowed-to-fail until an install validates
   the suite). See the platform matrix in `doctor`/docs.
-- **IDA Pro 9.2** with a valid license (launched at least once)
+- **IDA Pro 9.2 or 9.4** with a valid license (launched at least once);
+  build with the matching feature (`idalib92` / `idalib94`)
 - Rust stable (building only; version pinned via `rust-toolchain.toml`)
 
 ## Quick start

@@ -20,6 +20,14 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 path = "../../vendor/idalib"
 optional = true
 
+[dependencies.idalib94]
+path = "../../vendor/idalib94"
+optional = true
+
 [features]
-idalib = ["rmcp-ida/idalib", "dep:idalib"]
 default = []
+# Exactly one native IDA ABI per build (enforced by compile_error! in lib.rs).
+idalib92 = ["rmcp-ida/idalib92", "dep:idalib"]
+idalib94 = ["rmcp-ida/idalib94", "dep:idalib94"]
+# v1.0 name; alias for the 9.2 backend.
+idalib = ["idalib92"]
