@@ -1,4 +1,7 @@
 # check-distribution.ps1 — fail the build if any tracked file looks like proprietary IDA material.
+# NOTE: vendor/idalib-sys/sdk and vendor/idalib94-sys/sdk are MIT-licensed
+# HexRaysSA/ida-sdk submodules and are ALLOWED. Only proprietary IDA Pro
+# runtime binaries, decompiler DLLs, and license files are rejected.
 $ErrorActionPreference = 'Stop'
 
 $tracked = git ls-files

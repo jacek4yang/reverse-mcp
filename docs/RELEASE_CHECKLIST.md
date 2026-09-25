@@ -62,7 +62,7 @@ but *unverified* until #48 lands; do not claim support in release notes.
 - [ ] 24h soak (v1.0 target): same command, `-Hours 24` — pass.
 
 ## 4. Artifact
-- [ ] `pwsh scripts/check-distribution.ps1` — no proprietary IDA material
+- [ ] `pwsh scripts/check-distribution.ps1` — no proprietary IDA runtime material (SDK submodules are MIT and allowed)
       tracked in Git (extension/name/license-marker scan).
 - [ ] `powershell -File scripts\release.ps1` — runs gates 1 + 4–8 and
       produces:

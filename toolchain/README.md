@@ -26,14 +26,15 @@ system (`LIBCLANG_PATH`); the pinned zig driver is used by the ABI probe.
 
    Each invocation downloads, verifies, caches and executes the pinned
    artifact; the printed version output confirms the pin.
-3. Run the ABI probe against a local IDA SDK checkout:
+3. Run the ABI probe against the vendored IDA SDK submodules:
 
    ```powershell
    pwsh scripts/run-abi-probe.ps1 -Clang toolchain/bin/zig
    ```
 
    The probe only *compiles* against the SDK headers; it needs no IDA
-   runtime, decompiler, or license and produces no proprietary artifacts.
+   runtime, decompiler, or license. The SDK headers are MIT-licensed and
+   provided via Git submodules.
 
 ## Policy
 
