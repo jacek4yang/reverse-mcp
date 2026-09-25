@@ -38,13 +38,13 @@ crates/rmcp-worker/   worker library (dispatch + state); no separate binary
 crates/rmcp-broker/   MCP ServerHandler, tool registry, WorkerPool
 crates/reverse-ida-sys/  hand-written #[repr(C)] IDA SDK layouts + static
                       layout assertions (op_t, func_t, segment_t, ...)
-vendor/               gitignored-SDK-dependent (two independent ABI trees):
+vendor/               SDK-submodule-dependent (two independent ABI trees):
                         9.2: idalib 0.7.2+9.2.250908, idalib-sys, idalib-build
                         9.4: idalib94/idalib94-sys/idalib94-build/idalib94-macros
                              0.10.1+9.4.260714 (renamed from upstream
                              idalib-rs/idalib v0.10.1+9.4.260714)
-vendor/idalib-sys/sdk/    IDA 9.2 SDK (v9.2.0-sdk.1) — PROPRIETARY, gitignored
-vendor/idalib94-sys/sdk/  IDA 9.4 SDK (v9.4.0-sdk.1) — PROPRIETARY, gitignored
+vendor/idalib-sys/sdk/    IDA 9.2 SDK (v9.2.0-sdk.1) — MIT (HexRaysSA/ida-sdk submodule)
+vendor/idalib94-sys/sdk/  IDA 9.4 SDK (v9.4.0-sdk.1) — MIT (HexRaysSA/ida-sdk submodule)
 tests/                cli.rs (mock), idalib_real.rs (real IDA, --ignored, gated)
 scripts/check-distribution.ps1  proprietary-file scan
 .github/workflows/ci.yml        windows-latest: fmt, clippy -D warnings, mock tests

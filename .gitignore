@@ -24,9 +24,11 @@ GROK_TASK.md
 /sessions/
 *.log
 
-# Vendored idalib SDK material - proprietary, never commit
-vendor/idalib-sys/sdk/
-vendor/idalib94-sys/sdk/
+# IDA SDK headers are provided via Git submodules (HexRaysSA/ida-sdk, MIT).
+# The submodule paths (vendor/idalib-sys/sdk, vendor/idalib94-sys/sdk) are
+# tracked as gitlinks — do NOT gitignore them.
+# The proprietary IDA Pro runtime (ida.dll, idalib.dll, hexrays decompilers,
+# license files) remains excluded above and must never be committed.
 
 # ABI probe build artifacts
 backends/abi/abi_probe

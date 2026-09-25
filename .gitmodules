@@ -1,0 +1,6 @@
+[submodule "vendor/idalib-sys/sdk"]
+	path = vendor/idalib-sys/sdk
+	url = https://github.com/HexRaysSA/ida-sdk.git
+[submodule "vendor/idalib94-sys/sdk"]
+	path = vendor/idalib94-sys/sdk
+	url = https://github.com/HexRaysSA/ida-sdk.git
