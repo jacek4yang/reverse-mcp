@@ -14,6 +14,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Rust toolchain (pinned by rust-toolchain.toml)
         uses: dtolnay/rust-toolchain@stable
@@ -30,9 +32,25 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      # NOTE: the repo vendors idalib/idalib-sys (optional, feature-gated);
-      # their build scripts require the proprietary IDA SDK headers which are
-      # NOT in the repo. Target our crates explicitly instead of --workspace.
+      # The IDA SDK is MIT-licensed and pinned as two git submodules.
+      # Proprietary IDA runtime binaries are still never required by public CI.
+      - name: Verify IDA SDK submodules
+        shell: pwsh
+        run: |
+          $expected = @{
+            'vendor/idalib-sys/sdk' = '7f8fd3100142295bffa5eabb2ce6f5b5ac163c6b'
+            'vendor/idalib94-sys/sdk' = '2a9143f2f4abd7f54fe20d1e40fb68391d19c4cb'
+          }
+          foreach ($entry in $expected.GetEnumerator()) {
+            $actual = (git -C $entry.Key rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -ne $entry.Value) {
+              throw "$($entry.Key) expected $($entry.Value), got $actual"
+            }
+            if (-not (Test-Path (Join-Path $entry.Key 'src/include/auto.hpp'))) {
+              throw "$($entry.Key) is missing src/include/auto.hpp"
+            }
+          }
+
       - name: Encoding guard (UTF-8, no BOM, no mojibake)
         run: python -X utf8 scripts/check-encoding.py
 
@@ -46,18 +64,22 @@ jobs:
         run: cargo test -p reverse-mcp -p rmcp-core -p rmcp-ida -p rmcp-worker -p rmcp-broker
 
       # Mirror-variant check for the 9.4 backend: runs the same layout tests
-      # with the ida94 cfunc_t mirror variant selected (mock only, no SDK).
+      # with the ida94 cfunc_t mirror variant selected (mock only, no runtime).
       - name: Mirror tests (ida94 variant)
         run: cargo test -p reverse-ida-sys --features ida94
+
+      # Compile both real native backends against the pinned public SDK headers.
+      # cargo check runs their build scripts/bindgen without requiring IDA DLLs.
+      - name: Check real IDA backends
+        run: |
+          cargo check -p reverse-mcp --features idalib92
+          cargo check -p reverse-mcp --features idalib94
 
       - name: Build release binaries (mock)
         run: cargo build --release -p reverse-mcp -p rmcp-worker
 
-      # Public CI cannot run the real ABI probe (needs proprietary SDK
-      # headers) but it CAN verify the checked-in expected-fact files stay
-      # consistent with the Rust mirrors: backend facts are re-checked by
-      # the rmcp-core unit tests above; the structural JSON check catches
-      # hand-edits that drop facts.
+      # ABI expected-fact files are re-checked by rmcp-core tests above; this
+      # structural check also catches hand-edits that drop probe families.
       - name: ABI fact file structure
         shell: pwsh
         run: |
@@ -72,7 +94,7 @@ jobs:
             Write-Host "$f structure OK"
           }
 
-      - name: Distribution check (no proprietary material)
+      - name: Distribution check (no proprietary IDA runtime material)
         shell: pwsh
         run: ./scripts/check-distribution.ps1
 
